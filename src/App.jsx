@@ -246,17 +246,11 @@ export default function WorkflowTool() {
   const [attachments, setAttachments] = useState([]);
   const fileRef = useRef();
 
-  // Push a history entry when navigating into a detail view,
-  // and intercept the browser back button to go back within the app.
+  // Intercept browser back button to go back within the app instead of leaving.
   useEffect(() => {
-    if (selectedRequest) {
-      window.history.pushState({ detail: true }, "");
-    }
-  }, [selectedRequest]);
-
-  useEffect(() => {
-    const handlePop = () => {
+    const handlePop = (e) => {
       if (selectedRequest) {
+        e.preventDefault();
         setSelectedRequest(null);
       }
     };
