@@ -395,14 +395,6 @@ export default function WorkflowTool() {
                   />
                 </div>
               )}
-              <div>
-                <Label required>Assets</Label>
-                <RadioGroup
-                  options={["My markup is done. I'm ready to submit.", "I need to leave you some notes too."]}
-                  value={f.assetsStatus}
-                  onChange={v => setField("assetsStatus", v)}
-                />
-              </div>
             </Section>
           </div>
         )}
