@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect } from "react";
 
 const TEAM_B_MEMBERS = ["Lisa DC", "Rasha S", "Garrett H"];
 
@@ -254,7 +254,6 @@ export default function WorkflowTool() {
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [attachments, setAttachments] = useState([]);
   const [topicsOpen, setTopicsOpen] = useState({});
-  const fileRef = useRef();
 
   // Intercept browser back button to go back within the app instead of leaving.
   useEffect(() => {
@@ -544,32 +543,16 @@ export default function WorkflowTool() {
 
         <Section title="Attachments">
           <div>
-            <Label>Add your attachments.</Label>
-            <p style={{ fontSize: 12, color: "#64748b", marginBottom: 10 }}>Allowed file types: Word, Excel, PPT, PDF, Image, Video, Audio</p>
-            <div
-              onClick={() => fileRef.current.click()}
-              style={{ border: "2px dashed #1f2937", borderRadius: 10, padding: "16px", textAlign: "center", cursor: "pointer", color: "#475569", fontSize: 13, transition: "border-color 0.2s" }}
-              onMouseEnter={e => e.currentTarget.style.borderColor = "#3b82f6"}
-              onMouseLeave={e => e.currentTarget.style.borderColor = "#1f2937"}
-            >
-              <div style={{ fontSize: 20, marginBottom: 4 }}>📎</div>
-              Click to upload files
-              <input ref={fileRef} type="file" multiple style={{ display: "none" }}
-                onChange={e => setAttachments(prev => {
-                  const newFiles = Array.from(e.target.files).map(f => f.name);
-                  return [...prev, ...newFiles.filter(n => !prev.includes(n))];
-                })} />
-            </div>
-            {attachments.length > 0 && (
-              <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 8 }}>
-                {attachments.map((a, i) => (
-                  <span key={i} style={{ background: "#1e293b", borderRadius: 6, padding: "4px 10px", fontSize: 12, color: "#94a3b8", display: "flex", gap: 6, alignItems: "center" }}>
-                    📄 {a}
-                    <button onClick={() => setAttachments(prev => prev.filter((_, j) => j !== i))} style={{ background: "none", border: "none", color: "#ef4444", fontSize: 14, padding: 0 }}>×</button>
-                  </span>
-                ))}
-              </div>
-            )}
+            <Label>SharePoint or OneDrive link</Label>
+            <p style={{ fontSize: 12, color: "#475569", marginBottom: 10 }}>
+              Paste a link to your file in SharePoint or OneDrive. Before submitting, make sure editing permissions are turned on so the Content Editors can access it.
+            </p>
+            <input
+              style={inputStyle}
+              placeholder="https://..."
+              value={attachments[0] || ""}
+              onChange={e => setAttachments(e.target.value ? [e.target.value] : [])}
+            />
           </div>
         </Section>
 
@@ -745,12 +728,16 @@ export default function WorkflowTool() {
               </div>
             )}
 
-            {req.attachments?.length > 0 && (
-              <div>
-                <p style={{ fontSize: 11, color: "#334155", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>Attachments</p>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {req.attachments.map((a, i) => <span key={i} style={{ background: "#1e293b", borderRadius: 6, padding: "5px 12px", fontSize: 12, color: "#94a3b8" }}>📄 {a}</span>)}
-                </div>
+            {req.attachments?.length > 0 && req.attachments[0] && (
+              <div style={{ background: "#0d0d1a", border: "1px solid #1a1a2e", borderRadius: 10, padding: 16 }}>
+                <p style={{ fontSize: 11, color: "#334155", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>SharePoint / OneDrive</p>
+                <a href={req.attachments[0]} target="_blank" rel="noopener noreferrer"
+                  style={{ fontSize: 13, color: "#60a5fa", wordBreak: "break-all", textDecoration: "none" }}
+                  onMouseEnter={e => e.currentTarget.style.textDecoration = "underline"}
+                  onMouseLeave={e => e.currentTarget.style.textDecoration = "none"}
+                >
+                  🔗 {req.attachments[0]}
+                </a>
               </div>
             )}
 
