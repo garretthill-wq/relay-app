@@ -87,7 +87,16 @@ const TOPIC_CATEGORIES = [
 function loadRequests() {
   try {
     const stored = localStorage.getItem("relay_requests");
-    if (stored) return JSON.parse(stored);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      // Strip any stale _open keys that got saved into topicsSelected
+      return parsed.map(r => ({
+        ...r,
+        topicsSelected: Object.fromEntries(
+          Object.entries(r.topicsSelected || {}).filter(([k]) => !k.endsWith("_open"))
+        ),
+      }));
+    }
   } catch (e) {}
   return null;
 }
@@ -244,6 +253,7 @@ export default function WorkflowTool() {
   const [sortBy, setSortBy] = useState("newest");
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [attachments, setAttachments] = useState([]);
+  const [topicsOpen, setTopicsOpen] = useState({});
   const fileRef = useRef();
 
   // Intercept browser back button to go back within the app instead of leaving.
@@ -487,18 +497,12 @@ export default function WorkflowTool() {
 
         <Section title="Categories and Topics">
           {TOPIC_CATEGORIES.map((cat) => {
-            const isOpen = !!f.topicsSelected[cat.id + "_open"];
+            const isOpen = !!topicsOpen[cat.id];
             const selected = f.topicsSelected[cat.id] || [];
             return (
               <div key={cat.id}>
                 <div
-                  onClick={() => setF(prev => ({
-                    ...prev,
-                    topicsSelected: {
-                      ...prev.topicsSelected,
-                      [cat.id + "_open"]: !isOpen,
-                    }
-                  }))}
+                  onClick={() => setTopicsOpen(prev => ({ ...prev, [cat.id]: !isOpen }))}
                   style={{
                     display: "flex", alignItems: "center", justifyContent: "space-between",
                     cursor: "pointer", padding: "8px 0",
