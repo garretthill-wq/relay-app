@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 
 const TEAM_B_MEMBERS = ["Lisa DC", "Rasha S", "Garrett H"];
 
@@ -246,10 +246,28 @@ export default function WorkflowTool() {
   const [attachments, setAttachments] = useState([]);
   const fileRef = useRef();
 
+  // Push a history entry when navigating into a detail view,
+  // and intercept the browser back button to go back within the app.
+  useEffect(() => {
+    if (selectedRequest) {
+      window.history.pushState({ detail: true }, "");
+    }
+  }, [selectedRequest]);
+
+  useEffect(() => {
+    const handlePop = () => {
+      if (selectedRequest) {
+        setSelectedRequest(null);
+      }
+    };
+    window.addEventListener("popstate", handlePop);
+    return () => window.removeEventListener("popstate", handlePop);
+  }, [selectedRequest]);
+
   const [f, setF] = useState({
     submitterName: "", reason: "", item: "", contentType: "",
     region: "", citation: "",
-    assetsStatus: "",
+    assetsStatus: "", assetStyle: "",
     alertType: "", doesReplace: "", replacementLink: "",
     passageDate: "", effectiveDate: "", importantDate: "",
     displaySortBy: "", employeeCount: "", jurisdictionEmployeeCount: "",
@@ -276,7 +294,7 @@ export default function WorkflowTool() {
       submittedAt: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) };
     updateRequests(r => [newReq, ...r]);
     setF({ submitterName: "", reason: "", item: "", contentType: "", region: "", citation: "",
-      assetsStatus: "", alertType: "", doesReplace: "", replacementLink: "", passageDate: "",
+      assetsStatus: "", assetStyle: "", alertType: "", doesReplace: "", replacementLink: "", passageDate: "",
       effectiveDate: "", importantDate: "", displaySortBy: "", employeeCount: "",
       jurisdictionEmployeeCount: "", previewTime: "", complianceReminder: "", linkAlertTo: "",
       archiveDate: "", topicsSelected: {}, notes: "", priority: "Medium" });
@@ -388,6 +406,16 @@ export default function WorkflowTool() {
         {f.contentType === "Asset" && (
           <div className="slide-in">
             <Section title="Assets">
+              {f.reason === "New" && (
+                <div>
+                  <Label required>Asset style</Label>
+                  <RadioGroup
+                    options={["Designed", "Word", "Other"]}
+                    value={f.assetStyle || ""}
+                    onChange={v => setField("assetStyle", v)}
+                  />
+                </div>
+              )}
               <div>
                 <Label required>Assets</Label>
                 <RadioGroup
@@ -655,7 +683,7 @@ export default function WorkflowTool() {
 
     const detailFields = [
       ["Region", req.region], ["Citation", req.citation],
-      ["Asset status", req.assetsStatus],
+      ["Asset style", req.assetStyle], ["Asset status", req.assetsStatus],
       ["Alert type", req.alertType], ["Does it replace?", req.doesReplace],
       ["Replacement link", req.replacementLink],
       ["Passage date", req.passageDate], ["Effective date", req.effectiveDate],
