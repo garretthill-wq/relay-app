@@ -84,84 +84,50 @@ const TOPIC_CATEGORIES = [
   },
 ];
 
-function loadRequests() {
-  try {
-    const stored = localStorage.getItem("relay_requests");
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      // Strip any stale _open keys that got saved into topicsSelected
-      return parsed.map(r => ({
-        ...r,
-        topicsSelected: Object.fromEntries(
-          Object.entries(r.topicsSelected || {}).filter(([k]) => !k.endsWith("_open"))
-        ),
-      }));
-    }
-  } catch (e) {}
-  return null;
-}
-function saveRequests(reqs) {
-  try { localStorage.setItem("relay_requests", JSON.stringify(reqs)); } catch (e) {}
-}
-function loadCounter() {
-  try {
-    const v = localStorage.getItem("relay_counter");
-    if (v) return parseInt(v, 10);
-  } catch (e) {}
-  return 2;
-}
-function saveCounter(n) {
-  try { localStorage.setItem("relay_counter", String(n)); } catch (e) {}
+const SUPABASE_URL = "https://uxyxfnowkbeeoltiwpya.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV4eXhmbm93a2JlZW9sdGl3cHlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2NjEyNzYsImV4cCI6MjA4ODIzNzI3Nn0.SUDHemapmWZ_FJA0bpeSHCtPDMhx4MPx1a_ikyQX1yQ";
+
+async function dbGetRequests() {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/requests?order=id.desc`, {
+    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
+  });
+  if (!res.ok) return null;
+  const rows = await res.json();
+  return rows.map(r => ({ ...r.data, id: r.id, submittedAt: r.submitted_at }));
 }
 
-let idCounter = loadCounter();
+async function dbInsertRequest(req) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/requests`, {
+    method: "POST",
+    headers: {
+      apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`,
+      "Content-Type": "application/json", Prefer: "return=representation",
+    },
+    body: JSON.stringify({ data: req, submitted_at: req.submittedAt }),
+  });
+  if (!res.ok) return null;
+  const rows = await res.json();
+  return { ...rows[0].data, id: rows[0].id, submittedAt: rows[0].submitted_at };
+}
 
-const sampleRequests = [
-  {
-    id: 1,
-    submitterName: "Dana",
-    reason: "New",
-    item: "Minimum Wage Increase – California 2026",
-    contentType: "Law alert",
-    alertType: "AA",
-    doesReplace: "No",
-    replacementLink: "",
-    passageDate: "2025-09-15",
-    effectiveDate: "2026-01-01",
-    importantDate: "",
-    displaySortBy: "Effective date",
-    employeeCount: "50+",
-    jurisdictionEmployeeCount: "15+",
-    previewTime: "9:00 AM PT",
-    complianceReminder: "Yes",
-    linkAlertTo: "https://platform.example.com/wage/california",
-    archiveDate: "2028-01-01",
-    topicsSelected: { wage: ["Minimum Wage & Overtime"] },
-    notes: "Please prioritize — effective date is Jan 1.",
-    attachments: ["ca-min-wage-bill.pdf"],
-    priority: "Urgent",
-    status: "In Progress",
-    assignedTo: "Garrett H",
-    teamNotes: [{ author: "Garrett H", text: "Drafted. Sending for legal review before publish.", time: "1 hour ago" }],
-    submittedAt: "Mar 3, 2026",
-  },
-  {
-    id: 2,
-    submitterName: "Chris",
-    reason: "Update",
-    item: "FMLA Overview Page",
-    contentType: "Asset",
-    assetsStatus: "I need to leave you some notes too.",
-    topicsSelected: { leaves: ["Family and Medical Leave"] },
-    notes: "The current page is missing the 2025 threshold updates. See attachment for markup.",
-    attachments: ["fmla-markup.docx"],
-    priority: "Medium",
-    status: "Received",
-    assignedTo: "",
-    teamNotes: [],
-    submittedAt: "Mar 4, 2026",
-  },
-];
+async function dbUpdateRequest(id, updates) {
+  // Fetch current row first, then merge
+  const getRes = await fetch(`${SUPABASE_URL}/rest/v1/requests?id=eq.${id}`, {
+    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
+  });
+  const rows = await getRes.json();
+  if (!rows.length) return;
+  const current = rows[0].data;
+  const merged = { ...current, ...updates };
+  await fetch(`${SUPABASE_URL}/rest/v1/requests?id=eq.${id}`, {
+    method: "PATCH",
+    headers: {
+      apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ data: merged }),
+  });
+}
 
 function Label({ children, required }) {
   return (
@@ -245,15 +211,31 @@ function Section({ title, children }) {
 
 export default function WorkflowTool() {
   const [view, setView] = useState("submit");
-  const [requests, setRequests] = useState(() => loadRequests() || sampleRequests);
+  const [requests, setRequests] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [teamNote, setTeamNote] = useState("");
   const [filterStatus, setFilterStatus] = useState("All");
   const [filterAssignee, setFilterAssignee] = useState("All");
-  const [sortBy, setSortBy] = useState("newest");
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [attachments, setAttachments] = useState([]);
   const [topicsOpen, setTopicsOpen] = useState({});
+
+  // Load requests from Supabase on mount
+  useEffect(() => {
+    dbGetRequests().then(data => {
+      if (data) setRequests(data);
+      setLoading(false);
+    });
+  }, []);
+
+  // Poll for updates every 30 seconds so all users see fresh data
+  useEffect(() => {
+    const interval = setInterval(() => {
+      dbGetRequests().then(data => { if (data) setRequests(data); });
+    }, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Intercept browser back button to go back within the app instead of leaving.
   useEffect(() => {
@@ -281,21 +263,14 @@ export default function WorkflowTool() {
   const setField = (key, val) => setF(prev => ({ ...prev, [key]: val }));
   const setTopics = (catId, val) => setF(prev => ({ ...prev, topicsSelected: { ...prev.topicsSelected, [catId]: val } }));
 
-  const updateRequests = (updater) => {
-    setRequests(prev => {
-      const next = typeof updater === 'function' ? updater(prev) : updater;
-      saveRequests(next);
-      return next;
-    });
-  };
-
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!f.submitterName || !f.reason || !f.item || !f.contentType) return;
-    idCounter = idCounter + 1;
-    saveCounter(idCounter);
-    const newReq = { id: idCounter, ...f, attachments, status: "Received", assignedTo: "", teamNotes: [],
-      submittedAt: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) };
-    updateRequests(r => [newReq, ...r]);
+    const newReq = {
+      ...f, attachments, status: "Received", assignedTo: "", teamNotes: [],
+      submittedAt: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+    };
+    const saved = await dbInsertRequest(newReq);
+    if (saved) setRequests(r => [saved, ...r]);
     setF({ submitterName: "", reason: "", item: "", contentType: "", region: "", citation: "",
       assetsStatus: "", assetStyle: "", alertType: "", doesReplace: "", replacementLink: "", passageDate: "",
       effectiveDate: "", importantDate: "", displaySortBy: "", employeeCount: "",
@@ -306,8 +281,9 @@ export default function WorkflowTool() {
     setTimeout(() => setSubmitSuccess(false), 3500);
   };
 
-  const updateRequest = (id, updates) => {
-    updateRequests(r => r.map(req => req.id === id ? { ...req, ...updates } : req));
+  const updateRequest = async (id, updates) => {
+    await dbUpdateRequest(id, updates);
+    setRequests(r => r.map(req => req.id === id ? { ...req, ...updates } : req));
     if (selectedRequest?.id === id) setSelectedRequest(s => ({ ...s, ...updates }));
   };
 
@@ -573,7 +549,10 @@ export default function WorkflowTool() {
 
   const renderTracker = () => (
     <div className="fade-in" style={{ padding: "32px" }}>
-      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 24 }}>
+      {loading && (
+        <div style={{ textAlign: "center", padding: "60px", color: "#475569" }}>Loading requests...</div>
+      )}
+      {!loading && <><div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 24 }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.03em", color: "#f8fafc", marginBottom: 4 }}>Request Tracker</h1>
           <p style={{ color: "#475569", fontSize: 13 }}>{filteredRequests.length} requests · Content Editors workspace</p>
@@ -643,6 +622,7 @@ export default function WorkflowTool() {
         })}
         {filteredRequests.length === 0 && <div style={{ textAlign: "center", padding: "60px", color: "#334155" }}>No requests match your filters.</div>}
       </div>
+      </>}
     </div>
   );
 
