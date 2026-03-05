@@ -559,9 +559,6 @@ export default function WorkflowTool() {
         >
           Submit Request →
         </button>
-        >
-          Submit Request →
-        </button>
       </div>
     </div>
   );
