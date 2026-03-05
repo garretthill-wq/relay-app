@@ -311,10 +311,18 @@ export default function WorkflowTool() {
       return b.id - a.id;
     });
 
-  const canSubmit = f.submitterName && f.reason && f.item && f.contentType;
-
   const inputStyle = { background: "#111827", border: "1px solid #1f2937", color: "#e2e8f0", borderRadius: 8, padding: "10px 14px", fontFamily: "inherit", fontSize: 13, width: "100%", outline: "none" };
   const selectStyle = { ...inputStyle };
+
+  const [formError, setFormError] = useState(false);
+
+  const missingFields = [
+    !f.submitterName && "your name",
+    !f.reason && "reason",
+    !f.item && "item",
+    !f.contentType && "content type",
+  ].filter(Boolean);
+  const canSubmit = missingFields.length === 0;
 
   const renderSubmit = () => (
     <div className="fade-in" style={{ maxWidth: 700, margin: "0 auto", padding: "40px 24px 60px" }}>
@@ -382,19 +390,17 @@ export default function WorkflowTool() {
           </div>
         )}
 
-        {f.contentType === "Asset" && (
+        {f.contentType === "Asset" && f.reason === "New" && (
           <div className="slide-in">
             <Section title="Assets">
-              {f.reason === "New" && (
-                <div>
-                  <Label required>Asset style</Label>
-                  <RadioGroup
-                    options={["Designed", "Word", "Other"]}
-                    value={f.assetStyle || ""}
-                    onChange={v => setField("assetStyle", v)}
-                  />
-                </div>
-              )}
+              <div>
+                <Label required>Asset style</Label>
+                <RadioGroup
+                  options={["Designed", "Word", "Other"]}
+                  value={f.assetStyle || ""}
+                  onChange={v => setField("assetStyle", v)}
+                />
+              </div>
             </Section>
           </div>
         )}
@@ -491,7 +497,15 @@ export default function WorkflowTool() {
                 </div>
                 {isOpen && (
                   <div className="slide-in">
-                    <CheckboxGroup options={cat.options} selected={selected} onChange={vals => setTopics(cat.id, vals)} />
+                    <CheckboxGroup
+                      options={cat.options}
+                      selected={selected}
+                      onChange={vals => {
+                        setTopics(cat.id, vals);
+                        // Collapse after a short delay so user sees the selection
+                        setTimeout(() => setTopicsOpen(prev => ({ ...prev, [cat.id]: false })), 400);
+                      }}
+                    />
                   </div>
                 )}
               </div>
@@ -509,7 +523,7 @@ export default function WorkflowTool() {
           </div>
         </Section>
 
-        <Section title="Attachments">
+        <Section title="Links">
           <div>
             <Label>SharePoint or OneDrive link</Label>
             <p style={{ fontSize: 12, color: "#475569", marginBottom: 10 }}>
@@ -524,14 +538,27 @@ export default function WorkflowTool() {
           </div>
         </Section>
 
-        <button onClick={handleSubmit} disabled={!canSubmit} style={{
-          background: canSubmit ? "linear-gradient(135deg, #2563eb, #7c3aed)" : "#1e293b",
-          color: canSubmit ? "white" : "#475569",
+        {formError && (
+          <div style={{ background: "#2d0f0f", border: "1px solid #ef4444", borderRadius: 10, padding: "12px 16px", color: "#fca5a5", fontSize: 13 }}>
+            ⚠ Please fill in the following required field{missingFields.length > 1 ? "s" : ""}: <strong>{missingFields.join(", ")}</strong>
+          </div>
+        )}
+
+        <button onClick={() => {
+          if (!canSubmit) { setFormError(true); return; }
+          setFormError(false);
+          handleSubmit();
+        }} style={{
+          background: "linear-gradient(135deg, #2563eb, #7c3aed)",
+          color: "white",
           border: "none", borderRadius: 10, padding: "13px 28px",
           fontSize: 14, fontWeight: 600, letterSpacing: "-0.01em", transition: "transform 0.1s",
         }}
-          onMouseEnter={e => { if (canSubmit) e.currentTarget.style.transform = "translateY(-1px)"; }}
+          onMouseEnter={e => e.currentTarget.style.transform = "translateY(-1px)"}
           onMouseLeave={e => e.currentTarget.style.transform = "translateY(0)"}
+        >
+          Submit Request →
+        </button>
         >
           Submit Request →
         </button>
