@@ -221,6 +221,41 @@ export default function WorkflowTool() {
   const [attachments, setAttachments] = useState([]);
   const [topicsOpen, setTopicsOpen] = useState({});
 
+  // Tracker access control
+  const [trackerUser, setTrackerUser] = useState(null);
+  const [trackerPin, setTrackerPin] = useState("");
+  const [pinError, setPinError] = useState(false);
+  const TRACKER_USERS = {
+    "Lisa DC":  "1111",
+    "Rasha S":  "2222",
+    "Garrett H":"3333",
+  };
+
+  // Drag to reorder
+  const [dragIndex, setDragIndex] = useState(null);
+  const [manualOrder, setManualOrder] = useState(null);
+
+  // Personal views (saved filter sets)
+  const [savedViews, setSavedViews] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("relay_views") || "{}"); } catch { return {}; }
+  });
+  const [viewName, setViewName] = useState("");
+  const [showSaveView, setShowSaveView] = useState(false);
+
+  // Color customization
+  const [statusColors, setStatusColors] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("relay_colors") || "null") || null; } catch { return null; }
+  });
+  const [showColorEditor, setShowColorEditor] = useState(false);
+
+  const effectiveStatusConfig = statusColors
+    ? Object.fromEntries(Object.entries(STATUS_CONFIG).map(([k, v]) => [k, { ...v, color: statusColors[k] || v.color }]))
+    : STATUS_CONFIG;
+
+  // Edit mode in detail view
+  const [editMode, setEditMode] = useState(false);
+  const [editFields, setEditFields] = useState({});
+
   // Load requests from Supabase on mount
   useEffect(() => {
     dbGetRequests().then(data => {
@@ -277,6 +312,7 @@ export default function WorkflowTool() {
       jurisdictionEmployeeCount: "", previewTime: "", complianceReminder: "", linkAlertTo: "",
       archiveDate: "", topicsSelected: {}, notes: "", priority: "Medium" });
     setAttachments([]);
+    setTopicsOpen({});
     setSubmitSuccess(true);
     setTimeout(() => setSubmitSuccess(false), 3500);
   };
@@ -287,29 +323,66 @@ export default function WorkflowTool() {
     if (selectedRequest?.id === id) setSelectedRequest(s => ({ ...s, ...updates }));
   };
 
+  const saveView = () => {
+    if (!viewName.trim()) return;
+    const newViews = { ...savedViews, [viewName]: { filterStatus, filterAssignee } };
+    setSavedViews(newViews);
+    localStorage.setItem("relay_views", JSON.stringify(newViews));
+    setViewName(""); setShowSaveView(false);
+  };
+
+  const loadView = (name) => {
+    const v = savedViews[name];
+    if (v) { setFilterStatus(v.filterStatus); setFilterAssignee(v.filterAssignee); }
+  };
+
+  const deleteView = (name) => {
+    const newViews = { ...savedViews };
+    delete newViews[name];
+    setSavedViews(newViews);
+    localStorage.setItem("relay_views", JSON.stringify(newViews));
+  };
+
+  const handleDragStart = (i) => setDragIndex(i);
+  const handleDragOver = (e, i) => {
+    e.preventDefault();
+    if (dragIndex === null || dragIndex === i) return;
+    const order = manualOrder || filteredRequests.map(r => r.id);
+    const newOrder = [...order];
+    const [moved] = newOrder.splice(dragIndex, 1);
+    newOrder.splice(i, 0, moved);
+    setManualOrder(newOrder);
+    setDragIndex(i);
+  };
+  const handleDragEnd = () => setDragIndex(null);
+
   const addTeamNote = (id) => {
     if (!teamNote.trim()) return;
-    const note = { author: "You (Team B)", text: teamNote, time: "Just now" };
+    const note = { author: trackerUser || "Content Editor", text: teamNote, time: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" }) };
     const req = requests.find(r => r.id === id);
     updateRequest(id, { teamNotes: [...(req?.teamNotes || []), note] });
     setTeamNote("");
   };
 
-  const filteredRequests = requests
-    .filter(r => filterStatus === "All" || r.status === filterStatus)
-    .filter(r => filterAssignee === "All" || r.assignedTo === filterAssignee)
-    .sort((a, b) => {
-      // Completed always goes to the bottom
-      const aComplete = a.status === "Completed";
-      const bComplete = b.status === "Completed";
-      if (aComplete && !bComplete) return 1;
-      if (!aComplete && bComplete) return -1;
-      // Within completed: most recently completed first (highest id = most recent)
-      if (aComplete && bComplete) return b.id - a.id;
-      // Active items: sort by content type then by date received (newest first)
-      if (a.contentType !== b.contentType) return (a.contentType || "").localeCompare(b.contentType || "");
-      return b.id - a.id;
-    });
+  const filteredRequests = (() => {
+    let list = requests
+      .filter(r => filterStatus === "All" || r.status === filterStatus)
+      .filter(r => filterAssignee === "All" || r.assignedTo === filterAssignee)
+      .sort((a, b) => {
+        const aComplete = a.status === "Completed";
+        const bComplete = b.status === "Completed";
+        if (aComplete && !bComplete) return 1;
+        if (!aComplete && bComplete) return -1;
+        if (aComplete && bComplete) return b.id - a.id;
+        if (a.contentType !== b.contentType) return (a.contentType || "").localeCompare(b.contentType || "");
+        return b.id - a.id;
+      });
+    if (manualOrder) {
+      const idxMap = Object.fromEntries(manualOrder.map((id, i) => [id, i]));
+      list = [...list].sort((a, b) => (idxMap[a.id] ?? 999) - (idxMap[b.id] ?? 999));
+    }
+    return list;
+  })();
 
   const inputStyle = { background: "#111827", border: "1px solid #1f2937", color: "#e2e8f0", borderRadius: 8, padding: "10px 14px", fontFamily: "inherit", fontSize: 13, width: "100%", outline: "none" };
   const selectStyle = { ...inputStyle };
@@ -563,122 +636,240 @@ export default function WorkflowTool() {
     </div>
   );
 
-  const renderTracker = () => (
-    <div className="fade-in" style={{ padding: "32px" }}>
-      {loading && (
-        <div style={{ textAlign: "center", padding: "60px", color: "#475569" }}>Loading requests...</div>
-      )}
-      {!loading && <><div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 24 }}>
-        <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.03em", color: "#f8fafc", marginBottom: 4 }}>Request Tracker</h1>
-          <p style={{ color: "#475569", fontSize: 13 }}>{filteredRequests.length} requests · Content Editors workspace</p>
+  const renderTracker = () => {
+    // Login gate
+    if (!trackerUser) return (
+      <div className="fade-in" style={{ maxWidth: 360, margin: "80px auto", padding: "0 24px" }}>
+        <div style={{ background: "#0d0d1a", border: "1px solid #1a1a2e", borderRadius: 14, padding: 32 }}>
+          <div style={{ fontSize: 22, marginBottom: 8 }}>🔒</div>
+          <h2 style={{ fontSize: 18, fontWeight: 700, color: "#f8fafc", marginBottom: 6 }}>Content Editors</h2>
+          <p style={{ fontSize: 13, color: "#475569", marginBottom: 20 }}>Select your name and enter your PIN to access the tracker.</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <select value={trackerPin.split("|")[0] || ""} onChange={e => setTrackerPin(e.target.value + "|")} style={selectStyle}>
+              <option value="">Select your name...</option>
+              {Object.keys(TRACKER_USERS).map(name => <option key={name}>{name}</option>)}
+            </select>
+            <input
+              type="password" placeholder="PIN" maxLength={4}
+              style={inputStyle}
+              value={trackerPin.split("|")[1] || ""}
+              onChange={e => setTrackerPin((trackerPin.split("|")[0] || "") + "|" + e.target.value)}
+              onKeyDown={e => {
+                if (e.key === "Enter") {
+                  const [name, pin] = trackerPin.split("|");
+                  if (TRACKER_USERS[name] === pin) { setTrackerUser(name); setPinError(false); }
+                  else setPinError(true);
+                }
+              }}
+            />
+            {pinError && <p style={{ color: "#ef4444", fontSize: 12 }}>Incorrect PIN. Try again.</p>}
+            <button onClick={() => {
+              const [name, pin] = trackerPin.split("|");
+              if (TRACKER_USERS[name] === pin) { setTrackerUser(name); setPinError(false); }
+              else setPinError(true);
+            }} style={{ background: "linear-gradient(135deg, #2563eb, #7c3aed)", color: "white", border: "none", borderRadius: 8, padding: "10px", fontSize: 14, fontWeight: 600 }}>
+              Enter
+            </button>
+          </div>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          {Object.entries(STATUS_CONFIG).map(([status, cfg]) => {
-            const count = requests.filter(r => r.status === status).length;
+      </div>
+    );
+
+    return (
+    <div className="fade-in" style={{ padding: "32px" }}>
+      {loading && <div style={{ textAlign: "center", padding: "60px", color: "#475569" }}>Loading requests...</div>}
+      {!loading && <>
+        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 24 }}>
+          <div>
+            <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.03em", color: "#f8fafc", marginBottom: 4 }}>Request Tracker</h1>
+            <p style={{ color: "#475569", fontSize: 13 }}>{filteredRequests.length} requests · {trackerUser}</p>
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            {Object.entries(effectiveStatusConfig).map(([status, cfg]) => {
+              const count = requests.filter(r => r.status === status).length;
+              return (
+                <div key={status} style={{ background: cfg.bg, border: `1px solid ${cfg.color}22`, borderRadius: 8, padding: "5px 10px", textAlign: "center", minWidth: 56 }}>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: cfg.color }}>{count}</div>
+                  <div style={{ fontSize: 10, color: "#475569" }}>{status}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Toolbar */}
+        <div style={{ display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap", alignItems: "center" }}>
+          <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setManualOrder(null); }} style={{ ...selectStyle, width: "auto", minWidth: 130 }}>
+            <option value="All">All Statuses</option>
+            {Object.keys(STATUS_CONFIG).map(s => <option key={s}>{s}</option>)}
+          </select>
+          <select value={filterAssignee} onChange={e => { setFilterAssignee(e.target.value); setManualOrder(null); }} style={{ ...selectStyle, width: "auto", minWidth: 130 }}>
+            <option value="All">All Assignees</option>
+            <option value="">Unclaimed</option>
+            {TEAM_B_MEMBERS.map(m => <option key={m}>{m}</option>)}
+          </select>
+          {manualOrder && <button onClick={() => setManualOrder(null)} style={{ background: "#1e293b", border: "1px solid #334155", color: "#94a3b8", borderRadius: 6, padding: "6px 12px", fontSize: 12 }}>Reset order</button>}
+
+          {/* Personal views */}
+          <div style={{ display: "flex", gap: 6, alignItems: "center", marginLeft: 4 }}>
+            {Object.keys(savedViews).map(name => (
+              <div key={name} style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                <button onClick={() => loadView(name)} style={{ background: "#0d1f3c", border: "1px solid #1d4ed8", color: "#60a5fa", borderRadius: 6, padding: "5px 10px", fontSize: 11 }}>{name}</button>
+                <button onClick={() => deleteView(name)} style={{ background: "none", border: "none", color: "#475569", fontSize: 12, padding: "0 2px" }}>×</button>
+              </div>
+            ))}
+            {showSaveView ? (
+              <div style={{ display: "flex", gap: 4 }}>
+                <input value={viewName} onChange={e => setViewName(e.target.value)} placeholder="View name" style={{ ...inputStyle, width: 110, padding: "5px 8px", fontSize: 12 }} onKeyDown={e => e.key === "Enter" && saveView()} />
+                <button onClick={saveView} style={{ background: "#1d4ed8", border: "none", color: "white", borderRadius: 6, padding: "5px 10px", fontSize: 12 }}>Save</button>
+                <button onClick={() => setShowSaveView(false)} style={{ background: "none", border: "1px solid #334155", color: "#64748b", borderRadius: 6, padding: "5px 8px", fontSize: 12 }}>✕</button>
+              </div>
+            ) : (
+              <button onClick={() => setShowSaveView(true)} style={{ background: "none", border: "1px dashed #334155", color: "#64748b", borderRadius: 6, padding: "5px 10px", fontSize: 11 }}>+ Save view</button>
+            )}
+          </div>
+
+          {/* Color editor toggle */}
+          <button onClick={() => setShowColorEditor(v => !v)} style={{ background: "none", border: "1px solid #334155", color: "#64748b", borderRadius: 6, padding: "5px 10px", fontSize: 11, marginLeft: "auto" }}>🎨 Colors</button>
+          <button onClick={() => { setTrackerUser(null); setTrackerPin(""); }} style={{ background: "none", border: "1px solid #334155", color: "#64748b", borderRadius: 6, padding: "5px 10px", fontSize: 11 }}>Sign out</button>
+        </div>
+
+        {/* Color editor */}
+        {showColorEditor && (
+          <div className="slide-in" style={{ background: "#0d0d1a", border: "1px solid #1a1a2e", borderRadius: 10, padding: 16, marginBottom: 16 }}>
+            <p style={{ fontSize: 11, color: "#475569", marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>Status Colors</p>
+            <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+              {Object.entries(STATUS_CONFIG).map(([status, cfg]) => (
+                <div key={status} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <input type="color" value={(statusColors && statusColors[status]) || cfg.color}
+                    onChange={e => {
+                      const newColors = { ...(statusColors || Object.fromEntries(Object.entries(STATUS_CONFIG).map(([k, v]) => [k, v.color]))), [status]: e.target.value };
+                      setStatusColors(newColors);
+                      localStorage.setItem("relay_colors", JSON.stringify(newColors));
+                    }}
+                    style={{ width: 28, height: 28, borderRadius: 4, border: "none", cursor: "pointer", background: "none" }}
+                  />
+                  <span style={{ fontSize: 12, color: "#94a3b8" }}>{status}</span>
+                </div>
+              ))}
+              <button onClick={() => { setStatusColors(null); localStorage.removeItem("relay_colors"); }} style={{ background: "none", border: "1px solid #334155", color: "#64748b", borderRadius: 6, padding: "4px 10px", fontSize: 11 }}>Reset</button>
+            </div>
+          </div>
+        )}
+
+        {/* Request list with drag-to-reorder */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {filteredRequests.map((req, i) => {
+            const statusCfg = effectiveStatusConfig[req.status] || effectiveStatusConfig["Received"];
+            const priorityCfg = PRIORITY_CONFIG[req.priority] || PRIORITY_CONFIG["Medium"];
+            const topicCount = Object.values(req.topicsSelected || {}).flat().length;
             return (
-              <div key={status} style={{ background: cfg.bg, border: `1px solid ${cfg.color}22`, borderRadius: 8, padding: "5px 10px", textAlign: "center", minWidth: 56 }}>
-                <div style={{ fontSize: 16, fontWeight: 700, color: cfg.color }}>{count}</div>
-                <div style={{ fontSize: 10, color: "#475569" }}>{status}</div>
+              <div key={req.id} className="fade-in"
+                draggable
+                onDragStart={() => handleDragStart(i)}
+                onDragOver={e => handleDragOver(e, i)}
+                onDragEnd={handleDragEnd}
+                onClick={() => setSelectedRequest(req)}
+                style={{ background: dragIndex === i ? "#131325" : "#0d0d1a", border: `1px solid ${dragIndex === i ? "#3b82f6" : "#1a1a2e"}`, borderRadius: 12, padding: "13px 16px", cursor: "grab", display: "grid", gridTemplateColumns: "20px 1fr auto", gap: 10, alignItems: "center", transition: "border-color 0.2s" }}
+                onMouseEnter={e => { if (dragIndex === null) e.currentTarget.style.borderColor = "#2d3748"; }}
+                onMouseLeave={e => { if (dragIndex === null) e.currentTarget.style.borderColor = "#1a1a2e"; }}
+              >
+                <div style={{ color: "#334155", fontSize: 14, cursor: "grab", userSelect: "none" }} onClick={e => e.stopPropagation()}>⠿</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+                    <span style={{ background: statusCfg.bg, color: statusCfg.color, border: `1px solid ${statusCfg.color}44`, borderRadius: 5, padding: "2px 7px", fontSize: 11, fontWeight: 600 }}>{req.status}</span>
+                    <span style={{ color: priorityCfg.color, fontSize: 11, fontWeight: 600 }}>● {req.priority}</span>
+                    <span style={{ background: "#1a1a2e", color: "#475569", borderRadius: 5, padding: "2px 7px", fontSize: 11 }}>{req.contentType}</span>
+                    <span style={{ background: "#1a1a2e", color: "#475569", borderRadius: 5, padding: "2px 7px", fontSize: 11 }}>{req.reason}</span>
+                  </div>
+                  <div style={{ fontWeight: 600, fontSize: 14, color: "#f1f5f9" }}>{req.item}</div>
+                  <div style={{ fontSize: 12, color: "#475569" }}>
+                    From <span style={{ color: "#94a3b8" }}>{req.submitterName}</span> · {req.submittedAt}
+                    {topicCount > 0 && <> · <span style={{ color: "#60a5fa" }}>{topicCount} topic{topicCount > 1 ? "s" : ""}</span></>}
+                    {(req.teamNotes?.length || 0) > 0 && <> · <span style={{ color: "#3b82f6" }}>💬 {req.teamNotes.length}</span></>}
+                    {req.attachments?.length > 0 && req.attachments[0] && <> · 🔗</>}
+                  </div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  {req.assignedTo ? (
+                    <div style={{ width: 28, height: 28, borderRadius: "50%", background: "linear-gradient(135deg, #3b82f6, #8b5cf6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "white" }}>{req.assignedTo[0]}</div>
+                  ) : (
+                    <div style={{ fontSize: 11, color: "#475569", fontStyle: "italic" }}>Unclaimed</div>
+                  )}
+                  <span style={{ color: "#334155", fontSize: 16 }}>›</span>
+                </div>
               </div>
             );
           })}
+          {filteredRequests.length === 0 && <div style={{ textAlign: "center", padding: "60px", color: "#334155" }}>No requests match your filters.</div>}
         </div>
-      </div>
-
-      <div style={{ display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap" }}>
-        <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={{ ...selectStyle, width: "auto", minWidth: 130 }}>
-          <option value="All">All Statuses</option>
-          {Object.keys(STATUS_CONFIG).map(s => <option key={s}>{s}</option>)}
-        </select>
-        <select value={filterAssignee} onChange={e => setFilterAssignee(e.target.value)} style={{ ...selectStyle, width: "auto", minWidth: 130 }}>
-          <option value="All">All Assignees</option>
-          <option value="">Unclaimed</option>
-          {TEAM_B_MEMBERS.map(m => <option key={m}>{m}</option>)}
-        </select>
-      </div>
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {filteredRequests.map(req => {
-          const statusCfg = STATUS_CONFIG[req.status] || STATUS_CONFIG["Incoming"];
-          const priorityCfg = PRIORITY_CONFIG[req.priority] || PRIORITY_CONFIG["Medium"];
-          const topicCount = Object.values(req.topicsSelected || {}).flat().length;
-          return (
-            <div key={req.id} className="fade-in" onClick={() => setSelectedRequest(req)}
-              style={{ background: "#0d0d1a", border: "1px solid #1a1a2e", borderRadius: 12, padding: "13px 16px", cursor: "pointer", display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "center", transition: "border-color 0.2s, transform 0.1s" }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = "#2d3748"; e.currentTarget.style.transform = "translateX(2px)"; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = "#1a1a2e"; e.currentTarget.style.transform = "translateX(0)"; }}
-            >
-              <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
-                  <span style={{ fontSize: 11, color: "#334155", fontFamily: "monospace" }}>#{req.id}</span>
-                  <span style={{ background: statusCfg.bg, color: statusCfg.color, border: `1px solid ${statusCfg.color}44`, borderRadius: 5, padding: "2px 7px", fontSize: 11, fontWeight: 600 }}>{req.status}</span>
-                  <span style={{ color: priorityCfg.color, fontSize: 11, fontWeight: 600 }}>● {req.priority}</span>
-                  <span style={{ background: "#1a1a2e", color: "#475569", borderRadius: 5, padding: "2px 7px", fontSize: 11 }}>{req.contentType}</span>
-                  <span style={{ background: "#1a1a2e", color: "#475569", borderRadius: 5, padding: "2px 7px", fontSize: 11 }}>{req.reason}</span>
-                </div>
-                <div style={{ fontWeight: 600, fontSize: 14, color: "#f1f5f9" }}>{req.item}</div>
-                <div style={{ fontSize: 12, color: "#475569" }}>
-                  From <span style={{ color: "#94a3b8" }}>{req.submitterName}</span> · {req.submittedAt}
-                  {topicCount > 0 && <> · <span style={{ color: "#60a5fa" }}>{topicCount} topic{topicCount > 1 ? "s" : ""}</span></>}
-                  {(req.teamNotes?.length || 0) > 0 && <> · <span style={{ color: "#3b82f6" }}>💬 {req.teamNotes.length}</span></>}
-                  {req.attachments?.length > 0 && <> · 📎</>}
-                </div>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                {req.assignedTo ? (
-                  <div style={{ width: 28, height: 28, borderRadius: "50%", background: "linear-gradient(135deg, #3b82f6, #8b5cf6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "white" }}>{req.assignedTo[0]}</div>
-                ) : (
-                  <div style={{ fontSize: 11, color: "#475569", fontStyle: "italic" }}>Unclaimed</div>
-                )}
-                <span style={{ color: "#334155", fontSize: 16 }}>›</span>
-              </div>
-            </div>
-          );
-        })}
-        {filteredRequests.length === 0 && <div style={{ textAlign: "center", padding: "60px", color: "#334155" }}>No requests match your filters.</div>}
-      </div>
       </>}
     </div>
-  );
+    );
+  };
 
   const renderDetail = () => {
     const req = requests.find(r => r.id === selectedRequest?.id) || selectedRequest;
     if (!req) return null;
-    const statusCfg = STATUS_CONFIG[req.status] || STATUS_CONFIG["Incoming"];
+    const statusCfg = effectiveStatusConfig[req.status] || effectiveStatusConfig["Received"];
 
-    const DR = ({ label, value }) => value ? (
+    const ef = editMode ? editFields : req;
+    const setEF = (key, val) => setEditFields(prev => ({ ...prev, [key]: val }));
+
+    const saveEdits = () => {
+      updateRequest(req.id, editFields);
+      setEditMode(false);
+      setEditFields({});
+    };
+
+    const EField = ({ label, fieldKey, type = "text", options }) => (
       <div style={{ display: "grid", gridTemplateColumns: "170px 1fr", gap: 6, alignItems: "start" }}>
-        <span style={{ fontSize: 12, color: "#475569" }}>{label}</span>
-        <span style={{ fontSize: 13, color: "#cbd5e1", wordBreak: "break-all" }}>{value}</span>
+        <span style={{ fontSize: 12, color: "#475569", paddingTop: 2 }}>{label}</span>
+        {editMode ? (
+          options ? (
+            <select value={ef[fieldKey] || ""} onChange={e => setEF(fieldKey, e.target.value)} style={{ ...selectStyle, padding: "4px 8px", fontSize: 12 }}>
+              <option value="">—</option>
+              {options.map(o => <option key={o}>{o}</option>)}
+            </select>
+          ) : (
+            <input type={type} value={ef[fieldKey] || ""} onChange={e => setEF(fieldKey, e.target.value)} style={{ ...inputStyle, padding: "4px 8px", fontSize: 12 }} />
+          )
+        ) : (
+          <span style={{ fontSize: 13, color: "#cbd5e1", wordBreak: "break-all" }}>{req[fieldKey] || "—"}</span>
+        )}
       </div>
-    ) : null;
-
-    const allTopics = Object.entries(req.topicsSelected || {}).flatMap(([catId, vals]) =>
-      (vals || []).map(v => v)
     );
 
-    const detailFields = [
-      ["Region", req.region], ["Citation", req.citation],
-      ["Asset style", req.assetStyle], ["Asset status", req.assetsStatus],
-      ["Alert type", req.alertType], ["Does it replace?", req.doesReplace],
-      ["Replacement link", req.replacementLink],
-      ["Passage date", req.passageDate], ["Effective date", req.effectiveDate],
-      ["Important date", req.importantDate], ["Display/sort by", req.displaySortBy],
-      ["Employee count", req.employeeCount], ["Jurisdiction emp. count", req.jurisdictionEmployeeCount],
-      ["Preview time", req.previewTime], ["Compliance reminder", req.complianceReminder],
-      ["Link alert to", req.linkAlertTo], ["Archive date", req.archiveDate],
-    ].filter(([, v]) => v);
+    const allTopics = Object.entries(req.topicsSelected || {}).flatMap(([, vals]) => vals || []);
 
     return (
       <div className="slide-in" style={{ maxWidth: 860, margin: "0 auto", padding: "32px 24px" }}>
-        <button onClick={() => setSelectedRequest(null)} style={{ background: "none", border: "1px solid #1f2937", color: "#64748b", borderRadius: 8, padding: "6px 14px", fontSize: 13, marginBottom: 22 }}>
-          ← Back to tracker
-        </button>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 22 }}>
+          <button onClick={() => { setSelectedRequest(null); setEditMode(false); setEditFields({}); }} style={{ background: "none", border: "1px solid #1f2937", color: "#64748b", borderRadius: 8, padding: "6px 14px", fontSize: 13 }}>
+            ← Back to tracker
+          </button>
+          <div style={{ display: "flex", gap: 8 }}>
+            {editMode ? (
+              <>
+                <button onClick={saveEdits} style={{ background: "#166534", border: "none", color: "#4ade80", borderRadius: 8, padding: "6px 14px", fontSize: 13, fontWeight: 600 }}>✓ Save changes</button>
+                <button onClick={() => { setEditMode(false); setEditFields({}); }} style={{ background: "none", border: "1px solid #334155", color: "#64748b", borderRadius: 8, padding: "6px 14px", fontSize: 13 }}>Cancel</button>
+              </>
+            ) : (
+              <button onClick={() => { setEditMode(true); setEditFields({ ...req }); }} style={{ background: "#0d1f3c", border: "1px solid #1d4ed8", color: "#60a5fa", borderRadius: 8, padding: "6px 14px", fontSize: 13 }}>✏️ Edit</button>
+            )}
+          </div>
+        </div>
+
         <div style={{ display: "grid", gridTemplateColumns: "1fr 250px", gap: 22 }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+
+            {/* Header summary */}
             <div style={{ background: "#0d0d1a", border: "1px solid #1a1a2e", borderRadius: 12, padding: 20 }}>
-              <h2 style={{ fontSize: 19, fontWeight: 700, color: "#f8fafc", letterSpacing: "-0.02em", marginBottom: 16 }}>{req.item}</h2>
+              {editMode ? (
+                <input value={ef.item || ""} onChange={e => setEF("item", e.target.value)} style={{ ...inputStyle, fontSize: 17, fontWeight: 700, marginBottom: 16 }} />
+              ) : (
+                <h2 style={{ fontSize: 19, fontWeight: 700, color: "#f8fafc", letterSpacing: "-0.02em", marginBottom: 16 }}>{req.item}</h2>
+              )}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 <div>
                   <p style={{ fontSize: 11, color: "#475569", marginBottom: 3, textTransform: "uppercase", letterSpacing: "0.05em" }}>Date Received</p>
@@ -686,11 +877,11 @@ export default function WorkflowTool() {
                 </div>
                 <div>
                   <p style={{ fontSize: 11, color: "#475569", marginBottom: 3, textTransform: "uppercase", letterSpacing: "0.05em" }}>Requested By</p>
-                  <p style={{ fontSize: 13, color: "#e2e8f0", fontWeight: 500 }}>{req.submitterName}</p>
+                  {editMode ? <input value={ef.submitterName || ""} onChange={e => setEF("submitterName", e.target.value)} style={{ ...inputStyle, padding: "4px 8px", fontSize: 12 }} /> : <p style={{ fontSize: 13, color: "#e2e8f0", fontWeight: 500 }}>{req.submitterName}</p>}
                 </div>
                 <div>
                   <p style={{ fontSize: 11, color: "#475569", marginBottom: 3, textTransform: "uppercase", letterSpacing: "0.05em" }}>Assigned To</p>
-                  <p style={{ fontSize: 13, color: req.assignedTo ? "#e2e8f0" : "#64748b", fontWeight: 500, fontStyle: req.assignedTo ? "normal" : "italic" }}>{req.assignedTo || "Unclaimed"}</p>
+                  <p style={{ fontSize: 13, color: req.assignedTo ? "#e2e8f0" : "#64748b", fontStyle: req.assignedTo ? "normal" : "italic" }}>{req.assignedTo || "Unclaimed"}</p>
                 </div>
                 <div>
                   <p style={{ fontSize: 11, color: "#475569", marginBottom: 3, textTransform: "uppercase", letterSpacing: "0.05em" }}>Status</p>
@@ -699,14 +890,31 @@ export default function WorkflowTool() {
               </div>
             </div>
 
-            {detailFields.length > 0 && (
-              <div style={{ background: "#0d0d1a", border: "1px solid #1a1a2e", borderRadius: 10, padding: 16 }}>
-                <p style={{ fontSize: 11, color: "#334155", marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>Submission Details</p>
-                <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                  {detailFields.map(([label, value]) => <DR key={label} label={label} value={value} />)}
-                </div>
+            {/* Editable submission details */}
+            <div style={{ background: "#0d0d1a", border: "1px solid #1a1a2e", borderRadius: 10, padding: 16 }}>
+              <p style={{ fontSize: 11, color: "#334155", marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>Submission Details</p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <EField label="Reason" fieldKey="reason" options={["New", "Update", "Audit", "Other"]} />
+                <EField label="Content type" fieldKey="contentType" options={["Laws", "Asset", "Law alert", "Other"]} />
+                <EField label="Priority" fieldKey="priority" options={["Low", "Medium", "High", "Urgent"]} />
+                <EField label="Region" fieldKey="region" options={["Federal", "State", "Locality", "Other"]} />
+                <EField label="Citation" fieldKey="citation" />
+                <EField label="Asset style" fieldKey="assetStyle" options={["Designed", "Word", "Other"]} />
+                <EField label="Alert type" fieldKey="alertType" options={["AA", "PLA", "NLA", "PLA+NLA"]} />
+                <EField label="Does it replace?" fieldKey="doesReplace" options={["Yes", "No"]} />
+                <EField label="Replacement link" fieldKey="replacementLink" />
+                <EField label="Passage date" fieldKey="passageDate" type="date" />
+                <EField label="Effective date" fieldKey="effectiveDate" type="date" />
+                <EField label="Important date" fieldKey="importantDate" type="date" />
+                <EField label="Display/sort by" fieldKey="displaySortBy" options={["Passage date", "Effective date", "Important date"]} />
+                <EField label="Employee count" fieldKey="employeeCount" />
+                <EField label="Jurisdiction emp. count" fieldKey="jurisdictionEmployeeCount" />
+                <EField label="Preview time" fieldKey="previewTime" />
+                <EField label="Compliance reminder" fieldKey="complianceReminder" options={["Yes", "No"]} />
+                <EField label="Link alert to" fieldKey="linkAlertTo" />
+                <EField label="Archive date" fieldKey="archiveDate" type="date" />
               </div>
-            )}
+            </div>
 
             {allTopics.length > 0 && (
               <div style={{ background: "#0d0d1a", border: "1px solid #1a1a2e", borderRadius: 10, padding: 16 }}>
@@ -717,23 +925,27 @@ export default function WorkflowTool() {
               </div>
             )}
 
-            {req.notes && (
-              <div style={{ background: "#0d0d1a", border: "1px solid #1a1a2e", borderRadius: 10, padding: 16 }}>
-                <p style={{ fontSize: 11, color: "#334155", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>Submitter Notes</p>
-                <p style={{ fontSize: 13, color: "#cbd5e1", lineHeight: 1.6 }}>{req.notes}</p>
-              </div>
-            )}
+            <div style={{ background: "#0d0d1a", border: "1px solid #1a1a2e", borderRadius: 10, padding: 16 }}>
+              <p style={{ fontSize: 11, color: "#334155", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>Submitter Notes</p>
+              {editMode ? (
+                <textarea value={ef.notes || ""} onChange={e => setEF("notes", e.target.value)} style={{ ...inputStyle, minHeight: 70, resize: "vertical", fontSize: 13 }} />
+              ) : (
+                <p style={{ fontSize: 13, color: req.notes ? "#cbd5e1" : "#334155", lineHeight: 1.6, fontStyle: req.notes ? "normal" : "italic" }}>{req.notes || "None"}</p>
+              )}
+            </div>
 
             {req.attachments?.length > 0 && req.attachments[0] && (
               <div style={{ background: "#0d0d1a", border: "1px solid #1a1a2e", borderRadius: 10, padding: 16 }}>
                 <p style={{ fontSize: 11, color: "#334155", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>SharePoint / OneDrive</p>
-                <a href={req.attachments[0]} target="_blank" rel="noopener noreferrer"
-                  style={{ fontSize: 13, color: "#60a5fa", wordBreak: "break-all", textDecoration: "none" }}
-                  onMouseEnter={e => e.currentTarget.style.textDecoration = "underline"}
-                  onMouseLeave={e => e.currentTarget.style.textDecoration = "none"}
-                >
-                  🔗 {req.attachments[0]}
-                </a>
+                {editMode ? (
+                  <input value={ef.attachments?.[0] || ""} onChange={e => setEF("attachments", [e.target.value])} style={{ ...inputStyle, fontSize: 13 }} />
+                ) : (
+                  <a href={req.attachments[0]} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: "#60a5fa", wordBreak: "break-all", textDecoration: "none" }}
+                    onMouseEnter={e => e.currentTarget.style.textDecoration = "underline"}
+                    onMouseLeave={e => e.currentTarget.style.textDecoration = "none"}>
+                    🔗 {req.attachments[0]}
+                  </a>
+                )}
               </div>
             )}
 
