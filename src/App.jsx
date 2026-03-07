@@ -269,7 +269,7 @@ export default function WorkflowTool() {
     region: "", citation: "",
     locality: "",
     assetStyle: "",
-    alertType: "", doesReplace: "", replacementLink: "",
+    alertTypes: [],
     passageDate: "", effectiveDate: "", importantDate: "",
     displaySortBy: "", employeeCount: "", jurisdictionEmployeeCount: "",
     previewDateTime: "", complianceReminder: "", linkAlertTo: "", archiveDate: "",
@@ -283,11 +283,11 @@ export default function WorkflowTool() {
   const setTopics = (catId, val) => setF(prev => ({ ...prev, topicsSelected: { ...prev.topicsSelected, [catId]: val } }));
 
   // Content type helpers
-  const hasPLA = f.contentTypes.includes("PLA/NLA-PLA");
-  const hasNLA = f.contentTypes.includes("PLA/NLA-NLA");
-  const hasLawAlert = hasPLA || hasNLA;
+  const hasLawAlert = f.contentTypes.includes("Law alert");
+  const hasPLA = hasLawAlert && (f.alertTypes || []).includes("PLA");
+  const hasNLA = hasLawAlert && (f.alertTypes || []).includes("NLA");
   const isNewReason = f.reason === "New";
-  const showRegionAndTopics = f.reason === "New" || f.reason === "Other" || f.reason === "";
+  const showRegionAndTopics = f.reason === "New" || f.reason === "Other" || hasPLA;
 
   useEffect(() => {
     dbGetRequests().then(data => {
@@ -421,8 +421,7 @@ export default function WorkflowTool() {
   // Content type options with display labels
   const CONTENT_TYPE_OPTIONS = [
     { value: "Laws page", label: "Laws page" },
-    { value: "PLA/NLA-PLA", label: "PLA/NLA — PLA" },
-    { value: "PLA/NLA-NLA", label: "PLA/NLA — NLA" },
+    { value: "Law alert", label: "Law alert" },
     { value: "Asset", label: "Asset (chart, guide, form, letter, checklist, sample policy)" },
     { value: "Mineral Intelligence", label: "Mineral Intelligence" },
     { value: "Other", label: "Other" },
@@ -559,105 +558,130 @@ export default function WorkflowTool() {
           </div>
         )}
 
-        {/* Law Alerts section — shown when PLA and/or NLA selected */}
+        {/* Law Alerts section — shown when Law alert is selected */}
         {hasLawAlert && (
           <div className="slide-in">
             <Section title="Law Alerts">
 
-              {/* Locality — first field for both */}
+              {/* PLA / NLA — first choice */}
               <div>
-                <Label>Locality</Label>
-                <input style={inputStyle} placeholder="e.g. City of Los Angeles" value={f.locality} onChange={e => setField("locality", e.target.value)} />
+                <Label required>Alert type</Label>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }}>
+                  {["PLA", "NLA"].map(type => (
+                    <label key={type} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+                      <div style={{
+                        width: 16, height: 16, borderRadius: 4,
+                        border: `2px solid ${(f.alertTypes || []).includes(type) ? "#3b82f6" : "#334155"}`,
+                        background: (f.alertTypes || []).includes(type) ? "#3b82f6" : "transparent",
+                        flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+                        transition: "all 0.15s",
+                      }}>
+                        {(f.alertTypes || []).includes(type) && <span style={{ color: "white", fontSize: 10, lineHeight: 1 }}>✓</span>}
+                      </div>
+                      <input type="checkbox" checked={(f.alertTypes || []).includes(type)}
+                        onChange={() => {
+                          const current = f.alertTypes || [];
+                          setField("alertTypes", current.includes(type) ? current.filter(t => t !== type) : [...current, type]);
+                        }}
+                        style={{ display: "none" }} />
+                      <span style={{ fontSize: 13, color: (f.alertTypes || []).includes(type) ? "#e2e8f0" : "#94a3b8" }}>{type}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
 
-              {/* Does this replace anything — shared */}
-              <div>
-                <Label>Does this replace anything?</Label>
-                <RadioGroup options={["Yes", "No"]} value={f.doesReplace} onChange={v => setField("doesReplace", v)} />
-              </div>
-              {f.doesReplace === "Yes" && (
-                <div className="slide-in">
-                  <Label>What does it replace (link)?</Label>
-                  <input style={inputStyle} placeholder="https://..." value={f.replacementLink} onChange={e => setField("replacementLink", e.target.value)} />
-                </div>
+              {/* Shared fields — shown once either PLA or NLA is chosen */}
+              {(hasPLA || hasNLA) && (
+                <>
+                  <div>
+                    <Label>Locality</Label>
+                    <input style={inputStyle} placeholder="e.g. City of Los Angeles" value={f.locality} onChange={e => setField("locality", e.target.value)} />
+                  </div>
+                  <div>
+                    <Label>Does this replace anything?</Label>
+                    <RadioGroup options={["Yes", "No"]} value={f.doesReplace} onChange={v => setField("doesReplace", v)} />
+                  </div>
+                  {f.doesReplace === "Yes" && (
+                    <div className="slide-in">
+                      <Label>What does it replace (link)?</Label>
+                      <input style={inputStyle} placeholder="https://..." value={f.replacementLink} onChange={e => setField("replacementLink", e.target.value)} />
+                    </div>
+                  )}
+                </>
               )}
 
               {/* PLA-specific fields */}
               {hasPLA && (
-                <>
-                  <div style={{ borderTop: hasNLA ? "1px solid #1f2937" : "none", paddingTop: hasNLA ? 16 : 0 }}>
-                    {hasNLA && <p style={{ fontSize: 11, fontWeight: 700, color: "#60a5fa", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 14 }}>PLA Fields</p>}
-                    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
-                        {[["Passage date", "passageDate"], ["Effective date", "effectiveDate"], ["Important date", "importantDate"]].map(([label, key]) => (
-                          <div key={key}>
-                            <Label>{label}</Label>
-                            <p style={{ fontSize: 11, color: "#475569", marginBottom: 6 }}>Use the popup calendar.</p>
-                            <input style={inputStyle} type="date" value={f[key]} onChange={e => setField(key, e.target.value)} />
-                          </div>
-                        ))}
-                      </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-                        <div>
-                          <Label>Employee count</Label>
-                          <input style={inputStyle} placeholder="e.g. 50+" value={f.employeeCount} onChange={e => setField("employeeCount", e.target.value)} />
+                <div style={{ borderTop: hasNLA ? "1px solid #1f2937" : "none", paddingTop: hasNLA ? 16 : 0 }}>
+                  {hasNLA && <p style={{ fontSize: 11, fontWeight: 700, color: "#60a5fa", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 14 }}>PLA Fields</p>}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
+                      {[["Passage date", "passageDate"], ["Effective date", "effectiveDate"], ["Important date", "importantDate"]].map(([label, key]) => (
+                        <div key={key}>
+                          <Label>{label}</Label>
+                          <p style={{ fontSize: 11, color: "#475569", marginBottom: 6 }}>Use the popup calendar.</p>
+                          <input style={inputStyle} type="date" value={f[key]} onChange={e => setField(key, e.target.value)} />
                         </div>
-                        <div>
-                          <Label>Jurisdiction employee count</Label>
-                          <input style={inputStyle} placeholder="e.g. 15+" value={f.jurisdictionEmployeeCount} onChange={e => setField("jurisdictionEmployeeCount", e.target.value)} />
-                        </div>
+                      ))}
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                      <div>
+                        <Label>Employee count</Label>
+                        <input style={inputStyle} placeholder="e.g. 50+" value={f.employeeCount} onChange={e => setField("employeeCount", e.target.value)} />
                       </div>
                       <div>
-                        <Label>Display/sort by date</Label>
-                        <RadioGroup options={["Passage date", "Effective date", "Important date"]} value={f.displaySortBy} onChange={v => setField("displaySortBy", v)} />
-                      </div>
-                      <div>
-                        <Label>Link alert to</Label>
-                        <p style={{ fontSize: 12, color: "#475569", marginBottom: 8 }}>Optional. Provide a link to the page in the platform.</p>
-                        <input style={inputStyle} placeholder="https://..." value={f.linkAlertTo} onChange={e => setField("linkAlertTo", e.target.value)} />
-                      </div>
-                      <div>
-                        <Label>Archive date</Label>
-                        <p style={{ fontSize: 12, color: "#475569", marginBottom: 6 }}>Optional. Standard is two years after the effective date.</p>
-                        <input style={inputStyle} type="date" value={f.archiveDate} onChange={e => setField("archiveDate", e.target.value)} />
+                        <Label>Jurisdiction employee count</Label>
+                        <input style={inputStyle} placeholder="e.g. 15+" value={f.jurisdictionEmployeeCount} onChange={e => setField("jurisdictionEmployeeCount", e.target.value)} />
                       </div>
                     </div>
+                    <div>
+                      <Label>Display/sort by date</Label>
+                      <RadioGroup options={["Passage date", "Effective date", "Important date"]} value={f.displaySortBy} onChange={v => setField("displaySortBy", v)} />
+                    </div>
+                    <div>
+                      <Label>Link alert to</Label>
+                      <p style={{ fontSize: 12, color: "#475569", marginBottom: 8 }}>Optional. Provide a link to the page in the platform.</p>
+                      <input style={inputStyle} placeholder="https://..." value={f.linkAlertTo} onChange={e => setField("linkAlertTo", e.target.value)} />
+                    </div>
+                    <div>
+                      <Label>Archive date</Label>
+                      <p style={{ fontSize: 12, color: "#475569", marginBottom: 6 }}>Optional. Standard is two years after the effective date.</p>
+                      <input style={inputStyle} type="date" value={f.archiveDate} onChange={e => setField("archiveDate", e.target.value)} />
+                    </div>
                   </div>
-                </>
+                </div>
               )}
 
               {/* NLA-specific fields */}
               {hasNLA && (
-                <>
-                  <div style={{ borderTop: "1px solid #1f2937", paddingTop: 16 }}>
-                    {hasPLA && <p style={{ fontSize: 11, fontWeight: 700, color: "#60a5fa", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 14 }}>NLA Fields</p>}
-                    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                      <div>
-                        <Label>Subject</Label>
-                        <input style={inputStyle} placeholder="Email subject line" value={f.subject} onChange={e => setField("subject", e.target.value)} />
-                      </div>
-                      <div>
-                        <Label>Newsletter title</Label>
-                        <input style={inputStyle} placeholder="Newsletter title" value={f.newsletterTitle} onChange={e => setField("newsletterTitle", e.target.value)} />
-                      </div>
-                      <div>
-                        <Label>Preview date and time</Label>
-                        <p style={{ fontSize: 12, color: "#475569", marginBottom: 8 }}>Specify the time zone.</p>
-                        <input style={inputStyle} type="datetime-local" value={f.previewDateTime} onChange={e => setField("previewDateTime", e.target.value)} />
-                      </div>
-                      <div>
-                        <Label>Link alert to</Label>
-                        <p style={{ fontSize: 12, color: "#475569", marginBottom: 8 }}>Optional. Provide a link to the page in the platform.</p>
-                        <input style={inputStyle} placeholder="https://..." value={hasPLA ? f.linkAlertTo : f.linkAlertTo} onChange={e => setField("linkAlertTo", e.target.value)} />
-                      </div>
-                      <div>
-                        <Label>Archive date</Label>
-                        <p style={{ fontSize: 12, color: "#475569", marginBottom: 6 }}>Optional. Standard is two years after the effective date.</p>
-                        <input style={inputStyle} type="date" value={f.archiveDate} onChange={e => setField("archiveDate", e.target.value)} />
-                      </div>
+                <div style={{ borderTop: "1px solid #1f2937", paddingTop: 16 }}>
+                  {hasPLA && <p style={{ fontSize: 11, fontWeight: 700, color: "#60a5fa", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 14 }}>NLA Fields</p>}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                    <div>
+                      <Label>Subject</Label>
+                      <input style={inputStyle} placeholder="Email subject line" value={f.subject} onChange={e => setField("subject", e.target.value)} />
+                    </div>
+                    <div>
+                      <Label>Newsletter title</Label>
+                      <input style={inputStyle} placeholder="Newsletter title" value={f.newsletterTitle} onChange={e => setField("newsletterTitle", e.target.value)} />
+                    </div>
+                    <div>
+                      <Label>Preview date and time</Label>
+                      <p style={{ fontSize: 12, color: "#475569", marginBottom: 8 }}>Specify the time zone.</p>
+                      <input style={inputStyle} type="datetime-local" value={f.previewDateTime} onChange={e => setField("previewDateTime", e.target.value)} />
+                    </div>
+                    <div>
+                      <Label>Link alert to</Label>
+                      <p style={{ fontSize: 12, color: "#475569", marginBottom: 8 }}>Optional. Provide a link to the page in the platform.</p>
+                      <input style={inputStyle} placeholder="https://..." value={f.linkAlertTo} onChange={e => setField("linkAlertTo", e.target.value)} />
+                    </div>
+                    <div>
+                      <Label>Archive date</Label>
+                      <p style={{ fontSize: 12, color: "#475569", marginBottom: 6 }}>Optional. Standard is two years after the effective date.</p>
+                      <input style={inputStyle} type="date" value={f.archiveDate} onChange={e => setField("archiveDate", e.target.value)} />
                     </div>
                   </div>
-                </>
+                </div>
               )}
 
             </Section>
