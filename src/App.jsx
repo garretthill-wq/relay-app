@@ -17,6 +17,12 @@ const PRIORITY_CONFIG = {
   "Urgent": { color: "#a855f7" },
 };
 
+const SUBMITTER_NAMES = [
+  "Angie", "Anne", "Bonnie", "Denise", "Emily", "Garrett", "Kara", "Kate",
+  "Kerry", "Kyle", "Laura B", "Laura R", "Lindsey", "Lisa B", "Lisa DC",
+  "Lisa L", "Mandy", "Melissa", "Rasha", "Rick", "Sam", "Sarah", "Susanna", "Wendy",
+];
+
 const TOPIC_CATEGORIES = [
   {
     id: "benefits",
@@ -111,7 +117,6 @@ async function dbInsertRequest(req) {
 }
 
 async function dbUpdateRequest(id, updates) {
-  // Fetch current row first, then merge
   const getRes = await fetch(`${SUPABASE_URL}/rest/v1/requests?id=eq.${id}`, {
     headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
   });
@@ -140,21 +145,25 @@ function Label({ children, required }) {
 function RadioGroup({ options, value, onChange }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      {options.map(opt => (
-        <label key={opt} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
-          <div style={{
-            width: 16, height: 16, borderRadius: "50%",
-            border: `2px solid ${value === opt ? "#3b82f6" : "#334155"}`,
-            background: value === opt ? "#3b82f6" : "transparent",
-            flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
-            transition: "all 0.15s",
-          }}>
-            {value === opt && <div style={{ width: 6, height: 6, borderRadius: "50%", background: "white" }} />}
-          </div>
-          <input type="radio" value={opt} checked={value === opt} onChange={() => onChange(opt)} style={{ display: "none" }} />
-          <span style={{ fontSize: 14, color: value === opt ? "#e2e8f0" : "#94a3b8" }}>{opt}</span>
-        </label>
-      ))}
+      {options.map(opt => {
+        const label = typeof opt === "string" ? opt : opt.label;
+        const val = typeof opt === "string" ? opt : opt.value;
+        return (
+          <label key={val} style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer" }}>
+            <div style={{
+              width: 16, height: 16, borderRadius: "50%", marginTop: 2,
+              border: `2px solid ${value === val ? "#3b82f6" : "#334155"}`,
+              background: value === val ? "#3b82f6" : "transparent",
+              flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+              transition: "all 0.15s",
+            }}>
+              {value === val && <div style={{ width: 6, height: 6, borderRadius: "50%", background: "white" }} />}
+            </div>
+            <input type="radio" value={val} checked={value === val} onChange={() => onChange(val)} style={{ display: "none" }} />
+            <span style={{ fontSize: 14, color: value === val ? "#e2e8f0" : "#94a3b8", lineHeight: 1.4 }}>{label}</span>
+          </label>
+        );
+      })}
     </div>
   );
 }
@@ -166,21 +175,25 @@ function CheckboxGroup({ options, selected = [], onChange }) {
   };
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      {options.map(opt => (
-        <label key={opt} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
-          <div style={{
-            width: 16, height: 16, borderRadius: 4,
-            border: `2px solid ${selected.includes(opt) ? "#3b82f6" : "#334155"}`,
-            background: selected.includes(opt) ? "#3b82f6" : "transparent",
-            flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
-            transition: "all 0.15s",
-          }}>
-            {selected.includes(opt) && <span style={{ color: "white", fontSize: 10, lineHeight: 1 }}>✓</span>}
-          </div>
-          <input type="checkbox" checked={selected.includes(opt)} onChange={() => toggle(opt)} style={{ display: "none" }} />
-          <span style={{ fontSize: 13, color: selected.includes(opt) ? "#e2e8f0" : "#94a3b8" }}>{opt}</span>
-        </label>
-      ))}
+      {options.map(opt => {
+        const label = typeof opt === "string" ? opt : opt.label;
+        const val = typeof opt === "string" ? opt : opt.value;
+        return (
+          <label key={val} style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer" }}>
+            <div style={{
+              width: 16, height: 16, borderRadius: 4, marginTop: 2,
+              border: `2px solid ${selected.includes(val) ? "#3b82f6" : "#334155"}`,
+              background: selected.includes(val) ? "#3b82f6" : "transparent",
+              flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+              transition: "all 0.15s",
+            }}>
+              {selected.includes(val) && <span style={{ color: "white", fontSize: 10, lineHeight: 1 }}>✓</span>}
+            </div>
+            <input type="checkbox" checked={selected.includes(val)} onChange={() => toggle(val)} style={{ display: "none" }} />
+            <span style={{ fontSize: 13, color: selected.includes(val) ? "#e2e8f0" : "#94a3b8", lineHeight: 1.4 }}>{label}</span>
+          </label>
+        );
+      })}
     </div>
   );
 }
@@ -221,7 +234,6 @@ export default function WorkflowTool() {
   const [attachments, setAttachments] = useState([]);
   const [topicsOpen, setTopicsOpen] = useState({});
 
-  // Tracker access control
   const [trackerUser, setTrackerUser] = useState(null);
   const [trackerPin, setTrackerPin] = useState("");
   const [pinError, setPinError] = useState(false);
@@ -231,18 +243,15 @@ export default function WorkflowTool() {
     "Garrett H":"3333",
   };
 
-  // Drag to reorder
   const [dragIndex, setDragIndex] = useState(null);
   const [manualOrder, setManualOrder] = useState(null);
 
-  // Personal views (saved filter sets)
   const [savedViews, setSavedViews] = useState(() => {
     try { return JSON.parse(localStorage.getItem("relay_views") || "{}"); } catch { return {}; }
   });
   const [viewName, setViewName] = useState("");
   const [showSaveView, setShowSaveView] = useState(false);
 
-  // Color customization
   const [statusColors, setStatusColors] = useState(() => {
     try { return JSON.parse(localStorage.getItem("relay_colors") || "null") || null; } catch { return null; }
   });
@@ -252,11 +261,34 @@ export default function WorkflowTool() {
     ? Object.fromEntries(Object.entries(STATUS_CONFIG).map(([k, v]) => [k, { ...v, color: statusColors[k] || v.color }]))
     : STATUS_CONFIG;
 
-  // Edit mode in detail view
   const [editMode, setEditMode] = useState(false);
   const [editFields, setEditFields] = useState({});
 
-  // Load requests from Supabase on mount
+  const emptyForm = {
+    submitterName: "", reason: "", reasonOther: "", item: "", contentTypes: [],
+    region: "", citation: "",
+    locality: "",
+    assetStyle: "",
+    alertType: "", doesReplace: "", replacementLink: "",
+    passageDate: "", effectiveDate: "", importantDate: "",
+    displaySortBy: "", employeeCount: "", jurisdictionEmployeeCount: "",
+    previewDateTime: "", complianceReminder: "", linkAlertTo: "", archiveDate: "",
+    // NLA-specific
+    subject: "", newsletterTitle: "",
+    topicsSelected: {}, notes: "", priority: "Medium",
+  };
+
+  const [f, setF] = useState(emptyForm);
+  const setField = (key, val) => setF(prev => ({ ...prev, [key]: val }));
+  const setTopics = (catId, val) => setF(prev => ({ ...prev, topicsSelected: { ...prev.topicsSelected, [catId]: val } }));
+
+  // Content type helpers
+  const hasPLA = f.contentTypes.includes("PLA/NLA-PLA");
+  const hasNLA = f.contentTypes.includes("PLA/NLA-NLA");
+  const hasLawAlert = hasPLA || hasNLA;
+  const isNewReason = f.reason === "New";
+  const showRegionAndTopics = f.reason === "New" || f.reason === "Other" || f.reason === "";
+
   useEffect(() => {
     dbGetRequests().then(data => {
       if (data) setRequests(data);
@@ -264,7 +296,6 @@ export default function WorkflowTool() {
     });
   }, []);
 
-  // Poll for updates every 30 seconds so all users see fresh data
   useEffect(() => {
     const interval = setInterval(() => {
       dbGetRequests().then(data => { if (data) setRequests(data); });
@@ -272,7 +303,6 @@ export default function WorkflowTool() {
     return () => clearInterval(interval);
   }, []);
 
-  // Intercept browser back button to go back within the app instead of leaving.
   useEffect(() => {
     const handlePop = (e) => {
       if (selectedRequest) {
@@ -284,33 +314,14 @@ export default function WorkflowTool() {
     return () => window.removeEventListener("popstate", handlePop);
   }, [selectedRequest]);
 
-  const [f, setF] = useState({
-    submitterName: "", reason: "", item: "", contentType: "",
-    region: "", citation: "",
-    assetsStatus: "", assetStyle: "",
-    alertType: "", doesReplace: "", replacementLink: "",
-    passageDate: "", effectiveDate: "", importantDate: "",
-    displaySortBy: "", employeeCount: "", jurisdictionEmployeeCount: "",
-    previewTime: "", complianceReminder: "", linkAlertTo: "", archiveDate: "",
-    topicsSelected: {}, notes: "", priority: "Medium",
-  });
-
-  const setField = (key, val) => setF(prev => ({ ...prev, [key]: val }));
-  const setTopics = (catId, val) => setF(prev => ({ ...prev, topicsSelected: { ...prev.topicsSelected, [catId]: val } }));
-
   const handleSubmit = async () => {
-    if (!f.submitterName || !f.reason || !f.item || !f.contentType) return;
     const newReq = {
       ...f, attachments, status: "Received", assignedTo: "", teamNotes: [],
       submittedAt: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
     };
     const saved = await dbInsertRequest(newReq);
     if (saved) setRequests(r => [saved, ...r]);
-    setF({ submitterName: "", reason: "", item: "", contentType: "", region: "", citation: "",
-      assetsStatus: "", assetStyle: "", alertType: "", doesReplace: "", replacementLink: "", passageDate: "",
-      effectiveDate: "", importantDate: "", displaySortBy: "", employeeCount: "",
-      jurisdictionEmployeeCount: "", previewTime: "", complianceReminder: "", linkAlertTo: "",
-      archiveDate: "", topicsSelected: {}, notes: "", priority: "Medium" });
+    setF(emptyForm);
     setAttachments([]);
     setTopicsOpen({});
     setSubmitSuccess(true);
@@ -374,7 +385,9 @@ export default function WorkflowTool() {
         if (aComplete && !bComplete) return 1;
         if (!aComplete && bComplete) return -1;
         if (aComplete && bComplete) return b.id - a.id;
-        if (a.contentType !== b.contentType) return (a.contentType || "").localeCompare(b.contentType || "");
+        const aType = (a.contentTypes || [a.contentType] || []).join(",");
+        const bType = (b.contentTypes || [b.contentType] || []).join(",");
+        if (aType !== bType) return aType.localeCompare(bType);
         return b.id - a.id;
       });
     if (manualOrder) {
@@ -392,10 +405,28 @@ export default function WorkflowTool() {
   const missingFields = [
     !f.submitterName && "your name",
     !f.reason && "reason",
-    !f.item && "item",
-    !f.contentType && "content type",
+    !f.item && "item name",
+    f.contentTypes.length === 0 && "content type",
   ].filter(Boolean);
   const canSubmit = missingFields.length === 0;
+
+  // Toggle content type multi-select
+  const toggleContentType = (val) => {
+    setF(prev => {
+      const already = prev.contentTypes.includes(val);
+      return { ...prev, contentTypes: already ? prev.contentTypes.filter(v => v !== val) : [...prev.contentTypes, val] };
+    });
+  };
+
+  // Content type options with display labels
+  const CONTENT_TYPE_OPTIONS = [
+    { value: "Laws page", label: "Laws page" },
+    { value: "PLA/NLA-PLA", label: "PLA/NLA — PLA" },
+    { value: "PLA/NLA-NLA", label: "PLA/NLA — NLA" },
+    { value: "Asset", label: "Asset (chart, guide, form, letter, checklist, sample policy)" },
+    { value: "Mineral Intelligence", label: "Mineral Intelligence" },
+    { value: "Other", label: "Other" },
+  ];
 
   const renderSubmit = () => (
     <div className="fade-in" style={{ maxWidth: 700, margin: "0 auto", padding: "40px 24px 60px" }}>
@@ -416,11 +447,19 @@ export default function WorkflowTool() {
 
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
 
+        {/* Submitter Info */}
         <Section title="Submitter Info">
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
             <div>
               <Label required>Your name</Label>
-              <input style={inputStyle} placeholder="Full name" value={f.submitterName} onChange={e => setField("submitterName", e.target.value)} />
+              <select
+                style={selectStyle}
+                value={f.submitterName}
+                onChange={e => setField("submitterName", e.target.value)}
+              >
+                <option value="">Select your name...</option>
+                {SUBMITTER_NAMES.map(name => <option key={name} value={name}>{name}</option>)}
+              </select>
             </div>
             <div>
               <Label>Priority</Label>
@@ -431,23 +470,64 @@ export default function WorkflowTool() {
           </div>
         </Section>
 
+        {/* Submission Type */}
         <Section title="Submission Type">
           <div>
             <Label required>Reason — What sort of request are you submitting?</Label>
-            <RadioGroup options={["New", "Update", "Audit", "Other"]} value={f.reason} onChange={v => setField("reason", v)} />
+            <RadioGroup
+              options={[
+                { value: "New", label: "New (new page or item)" },
+                { value: "Update", label: "Update (update to a current page or item)" },
+                { value: "Audit", label: "Audit (legal or content review of full page or item)" },
+                { value: "Other", label: "Other" },
+              ]}
+              value={f.reason}
+              onChange={v => setField("reason", v)}
+            />
+            {f.reason === "Other" && (
+              <div className="slide-in" style={{ marginTop: 10 }}>
+                <input
+                  style={inputStyle}
+                  placeholder="Please describe your request..."
+                  value={f.reasonOther}
+                  onChange={e => setField("reasonOther", e.target.value)}
+                />
+              </div>
+            )}
           </div>
+
           <div>
-            <Label required>Item</Label>
-            <p style={{ fontSize: 12, color: "#475569", marginBottom: 8 }}>Name of page or asset; law alert title. If you need to include notes or add a link, there is space later in the form.</p>
+            <Label required>Item name, page title, or bill/law name or number</Label>
+            <p style={{ fontSize: 12, color: "#475569", marginBottom: 8 }}>
+              Name of page, law alert, Mintel thread, or asset title. Just the name here; there is room for notes or further instruction later.
+            </p>
             <input style={inputStyle} placeholder="e.g. California Minimum Wage Increase 2026" value={f.item} onChange={e => setField("item", e.target.value)} />
           </div>
+
           <div>
-            <Label required>Content type</Label>
-            <RadioGroup options={["Laws", "Asset", "Law alert", "Other"]} value={f.contentType} onChange={v => setField("contentType", v)} />
+            <Label required>Content type <span style={{ color: "#64748b", fontWeight: 400, fontSize: 12 }}>(Choose one or more based on your submission document.)</span></Label>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }}>
+              {CONTENT_TYPE_OPTIONS.map(opt => (
+                <label key={opt.value} style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer" }}>
+                  <div style={{
+                    width: 16, height: 16, borderRadius: 4, marginTop: 2,
+                    border: `2px solid ${f.contentTypes.includes(opt.value) ? "#3b82f6" : "#334155"}`,
+                    background: f.contentTypes.includes(opt.value) ? "#3b82f6" : "transparent",
+                    flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+                    transition: "all 0.15s",
+                  }}>
+                    {f.contentTypes.includes(opt.value) && <span style={{ color: "white", fontSize: 10, lineHeight: 1 }}>✓</span>}
+                  </div>
+                  <input type="checkbox" checked={f.contentTypes.includes(opt.value)} onChange={() => toggleContentType(opt.value)} style={{ display: "none" }} />
+                  <span style={{ fontSize: 13, color: f.contentTypes.includes(opt.value) ? "#e2e8f0" : "#94a3b8", lineHeight: 1.4 }}>{opt.label}</span>
+                </label>
+              ))}
+            </div>
           </div>
         </Section>
 
-        {f.contentType === "Laws" && (
+        {/* Laws section — only for New/Other reasons */}
+        {f.contentTypes.includes("Laws page") && showRegionAndTopics && (
           <div className="slide-in">
             <Section title="Laws">
               <div>
@@ -463,7 +543,8 @@ export default function WorkflowTool() {
           </div>
         )}
 
-        {f.contentType === "Asset" && f.reason === "New" && (
+        {/* Asset section */}
+        {f.contentTypes.includes("Asset") && f.reason === "New" && (
           <div className="slide-in">
             <Section title="Assets">
               <div>
@@ -478,13 +559,18 @@ export default function WorkflowTool() {
           </div>
         )}
 
-        {f.contentType === "Law alert" && (
+        {/* Law Alerts section — shown when PLA and/or NLA selected */}
+        {hasLawAlert && (
           <div className="slide-in">
             <Section title="Law Alerts">
+
+              {/* Locality — first field for both */}
               <div>
-                <Label>Alert type</Label>
-                <RadioGroup options={["AA", "PLA", "NLA", "PLA+NLA"]} value={f.alertType} onChange={v => setField("alertType", v)} />
+                <Label>Locality</Label>
+                <input style={inputStyle} placeholder="e.g. City of Los Angeles" value={f.locality} onChange={e => setField("locality", e.target.value)} />
               </div>
+
+              {/* Does this replace anything — shared */}
               <div>
                 <Label>Does this replace anything?</Label>
                 <RadioGroup options={["Yes", "No"]} value={f.doesReplace} onChange={v => setField("doesReplace", v)} />
@@ -495,97 +581,137 @@ export default function WorkflowTool() {
                   <input style={inputStyle} placeholder="https://..." value={f.replacementLink} onChange={e => setField("replacementLink", e.target.value)} />
                 </div>
               )}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
-                {[["Passage date", "passageDate"], ["Effective date", "effectiveDate"], ["Important date", "importantDate"]].map(([label, key]) => (
-                  <div key={key}>
-                    <Label>{label}</Label>
-                    <p style={{ fontSize: 11, color: "#475569", marginBottom: 6 }}>Use the popup calendar. Don't paste in a date.</p>
-                    <input style={inputStyle} type="date" value={f[key]} onChange={e => setField(key, e.target.value)} />
+
+              {/* PLA-specific fields */}
+              {hasPLA && (
+                <>
+                  <div style={{ borderTop: hasNLA ? "1px solid #1f2937" : "none", paddingTop: hasNLA ? 16 : 0 }}>
+                    {hasNLA && <p style={{ fontSize: 11, fontWeight: 700, color: "#60a5fa", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 14 }}>PLA Fields</p>}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
+                        {[["Passage date", "passageDate"], ["Effective date", "effectiveDate"], ["Important date", "importantDate"]].map(([label, key]) => (
+                          <div key={key}>
+                            <Label>{label}</Label>
+                            <p style={{ fontSize: 11, color: "#475569", marginBottom: 6 }}>Use the popup calendar.</p>
+                            <input style={inputStyle} type="date" value={f[key]} onChange={e => setField(key, e.target.value)} />
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                        <div>
+                          <Label>Employee count</Label>
+                          <input style={inputStyle} placeholder="e.g. 50+" value={f.employeeCount} onChange={e => setField("employeeCount", e.target.value)} />
+                        </div>
+                        <div>
+                          <Label>Jurisdiction employee count</Label>
+                          <input style={inputStyle} placeholder="e.g. 15+" value={f.jurisdictionEmployeeCount} onChange={e => setField("jurisdictionEmployeeCount", e.target.value)} />
+                        </div>
+                      </div>
+                      <div>
+                        <Label>Display/sort by date</Label>
+                        <RadioGroup options={["Passage date", "Effective date", "Important date"]} value={f.displaySortBy} onChange={v => setField("displaySortBy", v)} />
+                      </div>
+                      <div>
+                        <Label>Link alert to</Label>
+                        <p style={{ fontSize: 12, color: "#475569", marginBottom: 8 }}>Optional. Provide a link to the page in the platform.</p>
+                        <input style={inputStyle} placeholder="https://..." value={f.linkAlertTo} onChange={e => setField("linkAlertTo", e.target.value)} />
+                      </div>
+                      <div>
+                        <Label>Archive date</Label>
+                        <p style={{ fontSize: 12, color: "#475569", marginBottom: 6 }}>Optional. Standard is two years after the effective date.</p>
+                        <input style={inputStyle} type="date" value={f.archiveDate} onChange={e => setField("archiveDate", e.target.value)} />
+                      </div>
+                    </div>
                   </div>
-                ))}
-              </div>
-              <div>
-                <Label>Display/sort by date</Label>
-                <RadioGroup options={["Passage date", "Effective date", "Important date"]} value={f.displaySortBy} onChange={v => setField("displaySortBy", v)} />
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-                <div>
-                  <Label>Employee count</Label>
-                  <input style={inputStyle} placeholder="e.g. 50+" value={f.employeeCount} onChange={e => setField("employeeCount", e.target.value)} />
-                </div>
-                <div>
-                  <Label>Jurisdiction employee count</Label>
-                  <input style={inputStyle} placeholder="e.g. 15+" value={f.jurisdictionEmployeeCount} onChange={e => setField("jurisdictionEmployeeCount", e.target.value)} />
-                </div>
-              </div>
-              <div>
-                <Label>Preview time</Label>
-                <p style={{ fontSize: 12, color: "#475569", marginBottom: 8 }}>Specify the time zone. Unless requested here, delivery time will be 24 hours after preview.</p>
-                <input style={inputStyle} placeholder="e.g. 9:00 AM PT" value={f.previewTime} onChange={e => setField("previewTime", e.target.value)} />
-              </div>
-              <div>
-                <Label>Compliance reminder?</Label>
-                <RadioGroup options={["Yes", "No"]} value={f.complianceReminder} onChange={v => setField("complianceReminder", v)} />
-              </div>
-              <div>
-                <Label>Link alert to:</Label>
-                <p style={{ fontSize: 12, color: "#475569", marginBottom: 8 }}>Optional. Provide a link to the page in the platform. Only a link! Anything that's not a valid link will cause the form to fail.</p>
-                <input style={inputStyle} placeholder="https://..." value={f.linkAlertTo} onChange={e => setField("linkAlertTo", e.target.value)} />
-              </div>
-              <div>
-                <Label>Archive date</Label>
-                <p style={{ fontSize: 12, color: "#475569", marginBottom: 8 }}>Optional. Standard is two years after the effective date. Minimum wage alerts are archived one year after the effective date. If entering a date, use the popup calendar. Don't paste in a date.</p>
-                <input style={inputStyle} type="date" value={f.archiveDate} onChange={e => setField("archiveDate", e.target.value)} />
-              </div>
+                </>
+              )}
+
+              {/* NLA-specific fields */}
+              {hasNLA && (
+                <>
+                  <div style={{ borderTop: "1px solid #1f2937", paddingTop: 16 }}>
+                    {hasPLA && <p style={{ fontSize: 11, fontWeight: 700, color: "#60a5fa", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 14 }}>NLA Fields</p>}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                      <div>
+                        <Label>Subject</Label>
+                        <input style={inputStyle} placeholder="Email subject line" value={f.subject} onChange={e => setField("subject", e.target.value)} />
+                      </div>
+                      <div>
+                        <Label>Newsletter title</Label>
+                        <input style={inputStyle} placeholder="Newsletter title" value={f.newsletterTitle} onChange={e => setField("newsletterTitle", e.target.value)} />
+                      </div>
+                      <div>
+                        <Label>Preview date and time</Label>
+                        <p style={{ fontSize: 12, color: "#475569", marginBottom: 8 }}>Specify the time zone.</p>
+                        <input style={inputStyle} type="datetime-local" value={f.previewDateTime} onChange={e => setField("previewDateTime", e.target.value)} />
+                      </div>
+                      <div>
+                        <Label>Link alert to</Label>
+                        <p style={{ fontSize: 12, color: "#475569", marginBottom: 8 }}>Optional. Provide a link to the page in the platform.</p>
+                        <input style={inputStyle} placeholder="https://..." value={hasPLA ? f.linkAlertTo : f.linkAlertTo} onChange={e => setField("linkAlertTo", e.target.value)} />
+                      </div>
+                      <div>
+                        <Label>Archive date</Label>
+                        <p style={{ fontSize: 12, color: "#475569", marginBottom: 6 }}>Optional. Standard is two years after the effective date.</p>
+                        <input style={inputStyle} type="date" value={f.archiveDate} onChange={e => setField("archiveDate", e.target.value)} />
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+
             </Section>
           </div>
         )}
 
-        <Section title="Categories and Topics">
-          {TOPIC_CATEGORIES.map((cat) => {
-            const isOpen = !!topicsOpen[cat.id];
-            const selected = f.topicsSelected[cat.id] || [];
-            return (
-              <div key={cat.id}>
-                <div
-                  onClick={() => setTopicsOpen(prev => ({ ...prev, [cat.id]: !isOpen }))}
-                  style={{
-                    display: "flex", alignItems: "center", justifyContent: "space-between",
-                    cursor: "pointer", padding: "8px 0",
-                    borderBottom: isOpen ? "1px solid #1f2937" : "1px solid transparent",
-                    marginBottom: isOpen ? 12 : 0,
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontSize: 13, fontWeight: 500, color: selected.length > 0 ? "#e2e8f0" : "#94a3b8" }}>
-                      {cat.label}
-                    </span>
-                    {selected.length > 0 && (
-                      <span style={{ background: "#1d4ed8", color: "white", borderRadius: 10, padding: "1px 7px", fontSize: 11, fontWeight: 600 }}>
-                        {selected.length}
+        {/* Categories and Topics — hidden for Update and Audit */}
+        {showRegionAndTopics && (
+          <Section title="Categories and Topics">
+            {TOPIC_CATEGORIES.map((cat) => {
+              const isOpen = !!topicsOpen[cat.id];
+              const selected = f.topicsSelected[cat.id] || [];
+              return (
+                <div key={cat.id}>
+                  <div
+                    onClick={() => setTopicsOpen(prev => ({ ...prev, [cat.id]: !isOpen }))}
+                    style={{
+                      display: "flex", alignItems: "center", justifyContent: "space-between",
+                      cursor: "pointer", padding: "8px 0",
+                      borderBottom: isOpen ? "1px solid #1f2937" : "1px solid transparent",
+                      marginBottom: isOpen ? 12 : 0,
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 13, fontWeight: 500, color: selected.length > 0 ? "#e2e8f0" : "#94a3b8" }}>
+                        {cat.label}
                       </span>
-                    )}
+                      {selected.length > 0 && (
+                        <span style={{ background: "#1d4ed8", color: "white", borderRadius: 10, padding: "1px 7px", fontSize: 11, fontWeight: 600 }}>
+                          {selected.length}
+                        </span>
+                      )}
+                    </div>
+                    <span style={{ color: "#475569", fontSize: 12, transition: "transform 0.2s", display: "inline-block", transform: isOpen ? "rotate(180deg)" : "rotate(0deg)" }}>▾</span>
                   </div>
-                  <span style={{ color: "#475569", fontSize: 12, transition: "transform 0.2s", display: "inline-block", transform: isOpen ? "rotate(180deg)" : "rotate(0deg)" }}>▾</span>
+                  {isOpen && (
+                    <div className="slide-in">
+                      <CheckboxGroup
+                        options={cat.options}
+                        selected={selected}
+                        onChange={vals => {
+                          setTopics(cat.id, vals);
+                          setTimeout(() => setTopicsOpen(prev => ({ ...prev, [cat.id]: false })), 400);
+                        }}
+                      />
+                    </div>
+                  )}
                 </div>
-                {isOpen && (
-                  <div className="slide-in">
-                    <CheckboxGroup
-                      options={cat.options}
-                      selected={selected}
-                      onChange={vals => {
-                        setTopics(cat.id, vals);
-                        // Collapse after a short delay so user sees the selection
-                        setTimeout(() => setTopicsOpen(prev => ({ ...prev, [cat.id]: false })), 400);
-                      }}
-                    />
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </Section>
+              );
+            })}
+          </Section>
+        )}
 
+        {/* Notes */}
         <Section title="Notes">
           <div>
             <Label>Notes</Label>
@@ -596,15 +722,21 @@ export default function WorkflowTool() {
           </div>
         </Section>
 
-        <Section title="Links">
+        {/* Link */}
+        <Section title="Link">
           <div>
             <Label>SharePoint or OneDrive link</Label>
             <p style={{ fontSize: 12, color: "#475569", marginBottom: 10 }}>
-              Paste a link to your file in SharePoint or OneDrive. Before submitting, make sure editing permissions are turned on so the Content Editors can access it.
+              Drop your document into the{" "}
+              <a href="https://Zombo.com" target="_blank" rel="noopener noreferrer" style={{ color: "#60a5fa", textDecoration: "none" }}
+                onMouseEnter={e => e.currentTarget.style.textDecoration = "underline"}
+                onMouseLeave={e => e.currentTarget.style.textDecoration = "none"}>
+                Content Editor Submissions SharePoint folder
+              </a>. Then add the link or document name here.
             </p>
             <input
               style={inputStyle}
-              placeholder="https://..."
+              placeholder="https://... or document name"
               value={attachments[0] || ""}
               onChange={e => setAttachments(e.target.value ? [e.target.value] : [])}
             />
@@ -637,7 +769,6 @@ export default function WorkflowTool() {
   );
 
   const renderTracker = () => {
-    // Login gate
     if (!trackerUser) return (
       <div className="fade-in" style={{ maxWidth: 360, margin: "80px auto", padding: "0 24px" }}>
         <div style={{ background: "#0d0d1a", border: "1px solid #1a1a2e", borderRadius: 14, padding: 32 }}>
@@ -676,135 +807,133 @@ export default function WorkflowTool() {
     );
 
     return (
-    <div className="fade-in" style={{ padding: "32px" }}>
-      {loading && <div style={{ textAlign: "center", padding: "60px", color: "#475569" }}>Loading requests...</div>}
-      {!loading && <>
-        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 24 }}>
-          <div>
-            <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.03em", color: "#f8fafc", marginBottom: 4 }}>Request Tracker</h1>
-            <p style={{ color: "#475569", fontSize: 13 }}>{filteredRequests.length} requests · {trackerUser}</p>
+      <div className="fade-in" style={{ padding: "32px" }}>
+        {loading && <div style={{ textAlign: "center", padding: "60px", color: "#475569" }}>Loading requests...</div>}
+        {!loading && <>
+          <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 24 }}>
+            <div>
+              <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.03em", color: "#f8fafc", marginBottom: 4 }}>Request Tracker</h1>
+              <p style={{ color: "#475569", fontSize: 13 }}>{filteredRequests.length} requests · {trackerUser}</p>
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+              {Object.entries(effectiveStatusConfig).map(([status, cfg]) => {
+                const count = requests.filter(r => r.status === status).length;
+                return (
+                  <div key={status} style={{ background: cfg.bg, border: `1px solid ${cfg.color}22`, borderRadius: 8, padding: "5px 10px", textAlign: "center", minWidth: 56 }}>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: cfg.color }}>{count}</div>
+                    <div style={{ fontSize: 10, color: "#475569" }}>{status}</div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-            {Object.entries(effectiveStatusConfig).map(([status, cfg]) => {
-              const count = requests.filter(r => r.status === status).length;
+
+          <div style={{ display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap", alignItems: "center" }}>
+            <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setManualOrder(null); }} style={{ ...selectStyle, width: "auto", minWidth: 130 }}>
+              <option value="All">All Statuses</option>
+              {Object.keys(STATUS_CONFIG).map(s => <option key={s}>{s}</option>)}
+            </select>
+            <select value={filterAssignee} onChange={e => { setFilterAssignee(e.target.value); setManualOrder(null); }} style={{ ...selectStyle, width: "auto", minWidth: 130 }}>
+              <option value="All">All Assignees</option>
+              <option value="">Unclaimed</option>
+              {TEAM_B_MEMBERS.map(m => <option key={m}>{m}</option>)}
+            </select>
+            {manualOrder && <button onClick={() => setManualOrder(null)} style={{ background: "#1e293b", border: "1px solid #334155", color: "#94a3b8", borderRadius: 6, padding: "6px 12px", fontSize: 12 }}>Reset order</button>}
+
+            <div style={{ display: "flex", gap: 6, alignItems: "center", marginLeft: 4 }}>
+              {Object.keys(savedViews).map(name => (
+                <div key={name} style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                  <button onClick={() => loadView(name)} style={{ background: "#0d1f3c", border: "1px solid #1d4ed8", color: "#60a5fa", borderRadius: 6, padding: "5px 10px", fontSize: 11 }}>{name}</button>
+                  <button onClick={() => deleteView(name)} style={{ background: "none", border: "none", color: "#475569", fontSize: 12, padding: "0 2px" }}>×</button>
+                </div>
+              ))}
+              {showSaveView ? (
+                <div style={{ display: "flex", gap: 4 }}>
+                  <input value={viewName} onChange={e => setViewName(e.target.value)} placeholder="View name" style={{ ...inputStyle, width: 110, padding: "5px 8px", fontSize: 12 }} onKeyDown={e => e.key === "Enter" && saveView()} />
+                  <button onClick={saveView} style={{ background: "#1d4ed8", border: "none", color: "white", borderRadius: 6, padding: "5px 10px", fontSize: 12 }}>Save</button>
+                  <button onClick={() => setShowSaveView(false)} style={{ background: "none", border: "1px solid #334155", color: "#64748b", borderRadius: 6, padding: "5px 8px", fontSize: 12 }}>✕</button>
+                </div>
+              ) : (
+                <button onClick={() => setShowSaveView(true)} style={{ background: "none", border: "1px dashed #334155", color: "#64748b", borderRadius: 6, padding: "5px 10px", fontSize: 11 }}>+ Save view</button>
+              )}
+            </div>
+
+            <button onClick={() => setShowColorEditor(v => !v)} style={{ background: "none", border: "1px solid #334155", color: "#64748b", borderRadius: 6, padding: "5px 10px", fontSize: 11, marginLeft: "auto" }}>🎨 Colors</button>
+            <button onClick={() => { setTrackerUser(null); setTrackerPin(""); }} style={{ background: "none", border: "1px solid #334155", color: "#64748b", borderRadius: 6, padding: "5px 10px", fontSize: 11 }}>Sign out</button>
+          </div>
+
+          {showColorEditor && (
+            <div className="slide-in" style={{ background: "#0d0d1a", border: "1px solid #1a1a2e", borderRadius: 10, padding: 16, marginBottom: 16 }}>
+              <p style={{ fontSize: 11, color: "#475569", marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>Status Colors</p>
+              <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                {Object.entries(STATUS_CONFIG).map(([status, cfg]) => (
+                  <div key={status} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <input type="color" value={(statusColors && statusColors[status]) || cfg.color}
+                      onChange={e => {
+                        const newColors = { ...(statusColors || Object.fromEntries(Object.entries(STATUS_CONFIG).map(([k, v]) => [k, v.color]))), [status]: e.target.value };
+                        setStatusColors(newColors);
+                        localStorage.setItem("relay_colors", JSON.stringify(newColors));
+                      }}
+                      style={{ width: 28, height: 28, borderRadius: 4, border: "none", cursor: "pointer", background: "none" }}
+                    />
+                    <span style={{ fontSize: 12, color: "#94a3b8" }}>{status}</span>
+                  </div>
+                ))}
+                <button onClick={() => { setStatusColors(null); localStorage.removeItem("relay_colors"); }} style={{ background: "none", border: "1px solid #334155", color: "#64748b", borderRadius: 6, padding: "4px 10px", fontSize: 11 }}>Reset</button>
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {filteredRequests.map((req, i) => {
+              const statusCfg = effectiveStatusConfig[req.status] || effectiveStatusConfig["Received"];
+              const priorityCfg = PRIORITY_CONFIG[req.priority] || PRIORITY_CONFIG["Medium"];
+              const topicCount = Object.values(req.topicsSelected || {}).flat().length;
+              const displayTypes = (req.contentTypes || (req.contentType ? [req.contentType] : []));
               return (
-                <div key={status} style={{ background: cfg.bg, border: `1px solid ${cfg.color}22`, borderRadius: 8, padding: "5px 10px", textAlign: "center", minWidth: 56 }}>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: cfg.color }}>{count}</div>
-                  <div style={{ fontSize: 10, color: "#475569" }}>{status}</div>
+                <div key={req.id} className="fade-in"
+                  draggable
+                  onDragStart={() => handleDragStart(i)}
+                  onDragOver={e => handleDragOver(e, i)}
+                  onDragEnd={handleDragEnd}
+                  onClick={() => setSelectedRequest(req)}
+                  style={{ background: dragIndex === i ? "#131325" : "#0d0d1a", border: `1px solid ${dragIndex === i ? "#3b82f6" : "#1a1a2e"}`, borderRadius: 12, padding: "13px 16px", cursor: "grab", display: "grid", gridTemplateColumns: "20px 1fr auto", gap: 10, alignItems: "center", transition: "border-color 0.2s" }}
+                  onMouseEnter={e => { if (dragIndex === null) e.currentTarget.style.borderColor = "#2d3748"; }}
+                  onMouseLeave={e => { if (dragIndex === null) e.currentTarget.style.borderColor = "#1a1a2e"; }}
+                >
+                  <div style={{ color: "#334155", fontSize: 14, cursor: "grab", userSelect: "none" }} onClick={e => e.stopPropagation()}>⠿</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+                      <span style={{ background: statusCfg.bg, color: statusCfg.color, border: `1px solid ${statusCfg.color}44`, borderRadius: 5, padding: "2px 7px", fontSize: 11, fontWeight: 600 }}>{req.status}</span>
+                      <span style={{ color: priorityCfg.color, fontSize: 11, fontWeight: 600 }}>● {req.priority}</span>
+                      {displayTypes.map(ct => (
+                        <span key={ct} style={{ background: "#1a1a2e", color: "#475569", borderRadius: 5, padding: "2px 7px", fontSize: 11 }}>{ct}</span>
+                      ))}
+                      <span style={{ background: "#1a1a2e", color: "#475569", borderRadius: 5, padding: "2px 7px", fontSize: 11 }}>{req.reason}</span>
+                    </div>
+                    <div style={{ fontWeight: 600, fontSize: 14, color: "#f1f5f9" }}>{req.item}</div>
+                    <div style={{ fontSize: 12, color: "#475569" }}>
+                      From <span style={{ color: "#94a3b8" }}>{req.submitterName}</span> · {req.submittedAt}
+                      {topicCount > 0 && <> · <span style={{ color: "#60a5fa" }}>{topicCount} topic{topicCount > 1 ? "s" : ""}</span></>}
+                      {(req.teamNotes?.length || 0) > 0 && <> · <span style={{ color: "#3b82f6" }}>💬 {req.teamNotes.length}</span></>}
+                      {req.attachments?.length > 0 && req.attachments[0] && <> · 🔗</>}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    {req.assignedTo ? (
+                      <div style={{ width: 28, height: 28, borderRadius: "50%", background: "linear-gradient(135deg, #3b82f6, #8b5cf6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "white" }}>{req.assignedTo[0]}</div>
+                    ) : (
+                      <div style={{ fontSize: 11, color: "#475569", fontStyle: "italic" }}>Unclaimed</div>
+                    )}
+                    <span style={{ color: "#334155", fontSize: 16 }}>›</span>
+                  </div>
                 </div>
               );
             })}
+            {filteredRequests.length === 0 && <div style={{ textAlign: "center", padding: "60px", color: "#334155" }}>No requests match your filters.</div>}
           </div>
-        </div>
-
-        {/* Toolbar */}
-        <div style={{ display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap", alignItems: "center" }}>
-          <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setManualOrder(null); }} style={{ ...selectStyle, width: "auto", minWidth: 130 }}>
-            <option value="All">All Statuses</option>
-            {Object.keys(STATUS_CONFIG).map(s => <option key={s}>{s}</option>)}
-          </select>
-          <select value={filterAssignee} onChange={e => { setFilterAssignee(e.target.value); setManualOrder(null); }} style={{ ...selectStyle, width: "auto", minWidth: 130 }}>
-            <option value="All">All Assignees</option>
-            <option value="">Unclaimed</option>
-            {TEAM_B_MEMBERS.map(m => <option key={m}>{m}</option>)}
-          </select>
-          {manualOrder && <button onClick={() => setManualOrder(null)} style={{ background: "#1e293b", border: "1px solid #334155", color: "#94a3b8", borderRadius: 6, padding: "6px 12px", fontSize: 12 }}>Reset order</button>}
-
-          {/* Personal views */}
-          <div style={{ display: "flex", gap: 6, alignItems: "center", marginLeft: 4 }}>
-            {Object.keys(savedViews).map(name => (
-              <div key={name} style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                <button onClick={() => loadView(name)} style={{ background: "#0d1f3c", border: "1px solid #1d4ed8", color: "#60a5fa", borderRadius: 6, padding: "5px 10px", fontSize: 11 }}>{name}</button>
-                <button onClick={() => deleteView(name)} style={{ background: "none", border: "none", color: "#475569", fontSize: 12, padding: "0 2px" }}>×</button>
-              </div>
-            ))}
-            {showSaveView ? (
-              <div style={{ display: "flex", gap: 4 }}>
-                <input value={viewName} onChange={e => setViewName(e.target.value)} placeholder="View name" style={{ ...inputStyle, width: 110, padding: "5px 8px", fontSize: 12 }} onKeyDown={e => e.key === "Enter" && saveView()} />
-                <button onClick={saveView} style={{ background: "#1d4ed8", border: "none", color: "white", borderRadius: 6, padding: "5px 10px", fontSize: 12 }}>Save</button>
-                <button onClick={() => setShowSaveView(false)} style={{ background: "none", border: "1px solid #334155", color: "#64748b", borderRadius: 6, padding: "5px 8px", fontSize: 12 }}>✕</button>
-              </div>
-            ) : (
-              <button onClick={() => setShowSaveView(true)} style={{ background: "none", border: "1px dashed #334155", color: "#64748b", borderRadius: 6, padding: "5px 10px", fontSize: 11 }}>+ Save view</button>
-            )}
-          </div>
-
-          {/* Color editor toggle */}
-          <button onClick={() => setShowColorEditor(v => !v)} style={{ background: "none", border: "1px solid #334155", color: "#64748b", borderRadius: 6, padding: "5px 10px", fontSize: 11, marginLeft: "auto" }}>🎨 Colors</button>
-          <button onClick={() => { setTrackerUser(null); setTrackerPin(""); }} style={{ background: "none", border: "1px solid #334155", color: "#64748b", borderRadius: 6, padding: "5px 10px", fontSize: 11 }}>Sign out</button>
-        </div>
-
-        {/* Color editor */}
-        {showColorEditor && (
-          <div className="slide-in" style={{ background: "#0d0d1a", border: "1px solid #1a1a2e", borderRadius: 10, padding: 16, marginBottom: 16 }}>
-            <p style={{ fontSize: 11, color: "#475569", marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>Status Colors</p>
-            <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-              {Object.entries(STATUS_CONFIG).map(([status, cfg]) => (
-                <div key={status} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <input type="color" value={(statusColors && statusColors[status]) || cfg.color}
-                    onChange={e => {
-                      const newColors = { ...(statusColors || Object.fromEntries(Object.entries(STATUS_CONFIG).map(([k, v]) => [k, v.color]))), [status]: e.target.value };
-                      setStatusColors(newColors);
-                      localStorage.setItem("relay_colors", JSON.stringify(newColors));
-                    }}
-                    style={{ width: 28, height: 28, borderRadius: 4, border: "none", cursor: "pointer", background: "none" }}
-                  />
-                  <span style={{ fontSize: 12, color: "#94a3b8" }}>{status}</span>
-                </div>
-              ))}
-              <button onClick={() => { setStatusColors(null); localStorage.removeItem("relay_colors"); }} style={{ background: "none", border: "1px solid #334155", color: "#64748b", borderRadius: 6, padding: "4px 10px", fontSize: 11 }}>Reset</button>
-            </div>
-          </div>
-        )}
-
-        {/* Request list with drag-to-reorder */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {filteredRequests.map((req, i) => {
-            const statusCfg = effectiveStatusConfig[req.status] || effectiveStatusConfig["Received"];
-            const priorityCfg = PRIORITY_CONFIG[req.priority] || PRIORITY_CONFIG["Medium"];
-            const topicCount = Object.values(req.topicsSelected || {}).flat().length;
-            return (
-              <div key={req.id} className="fade-in"
-                draggable
-                onDragStart={() => handleDragStart(i)}
-                onDragOver={e => handleDragOver(e, i)}
-                onDragEnd={handleDragEnd}
-                onClick={() => setSelectedRequest(req)}
-                style={{ background: dragIndex === i ? "#131325" : "#0d0d1a", border: `1px solid ${dragIndex === i ? "#3b82f6" : "#1a1a2e"}`, borderRadius: 12, padding: "13px 16px", cursor: "grab", display: "grid", gridTemplateColumns: "20px 1fr auto", gap: 10, alignItems: "center", transition: "border-color 0.2s" }}
-                onMouseEnter={e => { if (dragIndex === null) e.currentTarget.style.borderColor = "#2d3748"; }}
-                onMouseLeave={e => { if (dragIndex === null) e.currentTarget.style.borderColor = "#1a1a2e"; }}
-              >
-                <div style={{ color: "#334155", fontSize: 14, cursor: "grab", userSelect: "none" }} onClick={e => e.stopPropagation()}>⠿</div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
-                    <span style={{ background: statusCfg.bg, color: statusCfg.color, border: `1px solid ${statusCfg.color}44`, borderRadius: 5, padding: "2px 7px", fontSize: 11, fontWeight: 600 }}>{req.status}</span>
-                    <span style={{ color: priorityCfg.color, fontSize: 11, fontWeight: 600 }}>● {req.priority}</span>
-                    <span style={{ background: "#1a1a2e", color: "#475569", borderRadius: 5, padding: "2px 7px", fontSize: 11 }}>{req.contentType}</span>
-                    <span style={{ background: "#1a1a2e", color: "#475569", borderRadius: 5, padding: "2px 7px", fontSize: 11 }}>{req.reason}</span>
-                  </div>
-                  <div style={{ fontWeight: 600, fontSize: 14, color: "#f1f5f9" }}>{req.item}</div>
-                  <div style={{ fontSize: 12, color: "#475569" }}>
-                    From <span style={{ color: "#94a3b8" }}>{req.submitterName}</span> · {req.submittedAt}
-                    {topicCount > 0 && <> · <span style={{ color: "#60a5fa" }}>{topicCount} topic{topicCount > 1 ? "s" : ""}</span></>}
-                    {(req.teamNotes?.length || 0) > 0 && <> · <span style={{ color: "#3b82f6" }}>💬 {req.teamNotes.length}</span></>}
-                    {req.attachments?.length > 0 && req.attachments[0] && <> · 🔗</>}
-                  </div>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  {req.assignedTo ? (
-                    <div style={{ width: 28, height: 28, borderRadius: "50%", background: "linear-gradient(135deg, #3b82f6, #8b5cf6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "white" }}>{req.assignedTo[0]}</div>
-                  ) : (
-                    <div style={{ fontSize: 11, color: "#475569", fontStyle: "italic" }}>Unclaimed</div>
-                  )}
-                  <span style={{ color: "#334155", fontSize: 16 }}>›</span>
-                </div>
-              </div>
-            );
-          })}
-          {filteredRequests.length === 0 && <div style={{ textAlign: "center", padding: "60px", color: "#334155" }}>No requests match your filters.</div>}
-        </div>
-      </>}
-    </div>
+        </>}
+      </div>
     );
   };
 
@@ -841,6 +970,7 @@ export default function WorkflowTool() {
     );
 
     const allTopics = Object.entries(req.topicsSelected || {}).flatMap(([, vals]) => vals || []);
+    const displayTypes = req.contentTypes || (req.contentType ? [req.contentType] : []);
 
     return (
       <div className="slide-in" style={{ maxWidth: 860, margin: "0 auto", padding: "32px 24px" }}>
@@ -862,8 +992,6 @@ export default function WorkflowTool() {
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 250px", gap: 22 }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-
-            {/* Header summary */}
             <div style={{ background: "#0d0d1a", border: "1px solid #1a1a2e", borderRadius: 12, padding: 20 }}>
               {editMode ? (
                 <input value={ef.item || ""} onChange={e => setEF("item", e.target.value)} style={{ ...inputStyle, fontSize: 17, fontWeight: 700, marginBottom: 16 }} />
@@ -890,17 +1018,19 @@ export default function WorkflowTool() {
               </div>
             </div>
 
-            {/* Editable submission details */}
             <div style={{ background: "#0d0d1a", border: "1px solid #1a1a2e", borderRadius: 10, padding: 16 }}>
               <p style={{ fontSize: 11, color: "#334155", marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>Submission Details</p>
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 <EField label="Reason" fieldKey="reason" options={["New", "Update", "Audit", "Other"]} />
-                <EField label="Content type" fieldKey="contentType" options={["Laws", "Asset", "Law alert", "Other"]} />
+                <div style={{ display: "grid", gridTemplateColumns: "170px 1fr", gap: 6, alignItems: "start" }}>
+                  <span style={{ fontSize: 12, color: "#475569", paddingTop: 2 }}>Content types</span>
+                  <span style={{ fontSize: 13, color: "#cbd5e1" }}>{displayTypes.join(", ") || "—"}</span>
+                </div>
                 <EField label="Priority" fieldKey="priority" options={["Low", "Medium", "High", "Urgent"]} />
                 <EField label="Region" fieldKey="region" options={["Federal", "State", "Locality", "Other"]} />
+                <EField label="Locality" fieldKey="locality" />
                 <EField label="Citation" fieldKey="citation" />
                 <EField label="Asset style" fieldKey="assetStyle" options={["Designed", "Word", "Other"]} />
-                <EField label="Alert type" fieldKey="alertType" options={["AA", "PLA", "NLA", "PLA+NLA"]} />
                 <EField label="Does it replace?" fieldKey="doesReplace" options={["Yes", "No"]} />
                 <EField label="Replacement link" fieldKey="replacementLink" />
                 <EField label="Passage date" fieldKey="passageDate" type="date" />
@@ -909,8 +1039,9 @@ export default function WorkflowTool() {
                 <EField label="Display/sort by" fieldKey="displaySortBy" options={["Passage date", "Effective date", "Important date"]} />
                 <EField label="Employee count" fieldKey="employeeCount" />
                 <EField label="Jurisdiction emp. count" fieldKey="jurisdictionEmployeeCount" />
-                <EField label="Preview time" fieldKey="previewTime" />
-                <EField label="Compliance reminder" fieldKey="complianceReminder" options={["Yes", "No"]} />
+                <EField label="Subject" fieldKey="subject" />
+                <EField label="Newsletter title" fieldKey="newsletterTitle" />
+                <EField label="Preview date & time" fieldKey="previewDateTime" type="datetime-local" />
                 <EField label="Link alert to" fieldKey="linkAlertTo" />
                 <EField label="Archive date" fieldKey="archiveDate" type="date" />
               </div>
@@ -974,7 +1105,6 @@ export default function WorkflowTool() {
             </div>
           </div>
 
-          {/* Sidebar */}
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {[
               { label: "Status", content: (
@@ -999,10 +1129,10 @@ export default function WorkflowTool() {
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {[
                   ["Priority", <span style={{ color: PRIORITY_CONFIG[req.priority]?.color || "#94a3b8", fontWeight: 600 }}>● {req.priority}</span>],
-                  ["Content type", req.contentType],
+                  ["Content types", displayTypes.join(", ") || "—"],
                   ["Reason", req.reason],
                   req.effectiveDate && ["Effective date", req.effectiveDate],
-                  req.alertType && ["Alert type", req.alertType],
+                  req.locality && ["Locality", req.locality],
                 ].filter(Boolean).map(([k, v]) => (
                   <div key={k}>
                     <p style={{ fontSize: 11, color: "#334155", marginBottom: 2 }}>{k}</p>
@@ -1016,7 +1146,6 @@ export default function WorkflowTool() {
       </div>
     );
   };
-
 
   return (
     <div style={{ minHeight: "100vh", background: "#0a0a0f", fontFamily: "'DM Sans', 'Segoe UI', sans-serif", color: "#e2e8f0" }}>
